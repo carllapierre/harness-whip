@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { readFileSync, mkdirSync, chmodSync } from "node:fs";
 import { dirname } from "node:path";
 import type { RecoveryStore } from "../../application/ports/recovery-store.ts";
-import type { Activity, Recovery } from "../../domain/recovery/recovery-model.ts";
+import type { Activity, MonitoringIssue, Recovery } from "../../domain/recovery/recovery-model.ts";
 
 export class SqliteRecoveryStore implements RecoveryStore {
     private readonly db: DatabaseSync;
@@ -15,13 +15,23 @@ export class SqliteRecoveryStore implements RecoveryStore {
         this.db = new DatabaseSync(path);
         this.db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
         const version = this.db.prepare("PRAGMA user_version").get()?.user_version;
-        if (typeof version === "number" && version > 1) {
+        if (typeof version === "number" && version > 2) {
             this.db.close();
             throw new Error("State was created by a newer Codex Whip; upgrade this installation");
         }
-        this.db.exec(
-            readFileSync(new URL("../../../migrations/001-recovery.sql", import.meta.url), "utf8"),
-        );
+        for (const [index, migration] of [
+            "001-recovery.sql",
+            "002-monitoring-issues.sql",
+        ].entries()) {
+            if (Number(version) <= index) {
+                this.db.exec(
+                    readFileSync(
+                        new URL(`../../../migrations/${migration}`, import.meta.url),
+                        "utf8",
+                    ),
+                );
+            }
+        }
         if (path !== ":memory:" && process.platform !== "win32") {
             chmodSync(path, 0o600);
         }
@@ -105,6 +115,26 @@ export class SqliteRecoveryStore implements RecoveryStore {
 
     excluded(threadId: string): boolean {
         return !!this.db.prepare("SELECT 1 FROM exclusions WHERE thread_id=?").get(threadId);
+    }
+
+    issues(): MonitoringIssue[] {
+        return this.db
+            .prepare(
+                "SELECT key, reason, observed_at AS observedAt FROM monitoring_issues ORDER BY key",
+            )
+            .all() as unknown as MonitoringIssue[];
+    }
+
+    setIssue(issue: MonitoringIssue): void {
+        this.db
+            .prepare(
+                "INSERT INTO monitoring_issues VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET reason=excluded.reason, observed_at=excluded.observed_at",
+            )
+            .run(issue.key, issue.reason, issue.observedAt);
+    }
+
+    clearIssue(key: string): void {
+        this.db.prepare("DELETE FROM monitoring_issues WHERE key=?").run(key);
     }
 
     exclude(threadId: string, value: boolean): void {

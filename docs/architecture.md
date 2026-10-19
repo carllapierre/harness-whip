@@ -64,6 +64,10 @@ explicit selected path when outside the selected project directory. Broad-scope
 baselines persist across restarts. Individual UUID selection can enroll an old
 quota failure deliberately.
 
+A turn that started after the watcher launched can qualify even when its first
+observation is already a quota failure. Its structured start timestamp distinguishes
+that case from an old failure; missing timestamps keep the conservative baseline.
+
 ## Codex boundary
 
 The official app-server discovers threads and reads quota. Desktop mode combines
@@ -80,6 +84,13 @@ automatic recovery in the process. Whip never fabricates tool results or user an
 Quota windows are whatever the selected account bucket returns. Five hours is not
 hardcoded. Reset timestamps are milliseconds internally and are converted from
 protocol Unix seconds at the adapter boundary. Missing capacity is not zero usage.
+Pending recoveries reread quota at most 30 seconds apart, including before a
+reported reset, so manually restored capacity can be detected early.
+
+The official metadata confirms whether a chat is ephemeral; desktop IPC may omit
+that optional flag. Explicit conflicting flags still block recovery. Failed
+inspections and blocked quota failures persist separately from recovery records,
+so `status` can expose problems even when the recovery ledger is empty.
 
 ## Deliberate limits
 

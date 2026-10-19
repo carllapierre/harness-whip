@@ -61,18 +61,29 @@ export function normalizeSnapshot(
         .flatMap((item) => array(object(item).content))
         .map((part) => text(object(part).text))
         .join("\n");
-    const blocked = desktop
-        ? state.hostId !== "local" ||
-          state.ephemeral !== false ||
-          state.resumeState !== "resumed" ||
-          !Array.isArray(state.requests) ||
-          array(state.requests).length > 0 ||
-          !Array.isArray(state.queuedFollowUps) ||
-          array(state.queuedFollowUps).length > 0 ||
-          !!state.threadGoalResumeConfirmation ||
-          (state.threadGoal != null && goal.status !== "active") ||
-          array(object(state.threadRuntimeStatus).activeFlags).length > 0
-        : array(object(state.status).activeFlags).length > 0 || state.blocked === true;
+    // thread/read is authoritative for persistence. Desktop IPC may omit the
+    // optional ephemeral field; an explicit conflicting or unknown value still blocks.
+    const blockers = desktop
+        ? [
+              state.hostId !== "local" && "Desktop host is not local",
+              (meta.ephemeral || (state.ephemeral !== undefined && state.ephemeral !== false)) &&
+                  "Conversation persistence is not confirmed",
+              state.resumeState !== "resumed" && "Desktop conversation is not resumed",
+              (!Array.isArray(state.requests) || array(state.requests).length > 0) &&
+                  "Desktop approval or user input is pending or unavailable",
+              (!Array.isArray(state.queuedFollowUps) || array(state.queuedFollowUps).length > 0) &&
+                  "Queued messages are pending or unavailable",
+              (!!state.threadGoalResumeConfirmation ||
+                  (state.threadGoal != null && goal.status !== "active")) &&
+                  "Goal needs confirmation or is not active",
+              array(object(state.threadRuntimeStatus).activeFlags).length > 0 &&
+                  "Desktop runtime has active blockers",
+          ]
+        : [
+              (array(object(state.status).activeFlags).length > 0 || state.blocked === true) &&
+                  "Runtime, queued message, goal, or approval blocks continuation",
+          ];
+    const blockedReason = blockers.filter(Boolean).join("; ") || null;
     const settings = desktop
         ? {
               cwd: state.cwd,
@@ -92,12 +103,20 @@ export function normalizeSnapshot(
     return {
         ...meta,
         turnId: text(turn.id, text(turn.turnId)),
+        turnStartedAt: desktop
+            ? typeof turn.turnStartedAtMs === "number"
+                ? turn.turnStartedAtMs
+                : null
+            : typeof turn.startedAt === "number"
+              ? turn.startedAt * 1000
+              : null,
         turnStatus,
         quotaFailure: errorInfo === "usageLimitExceeded" || errorInfo === "UsageLimitExceeded",
         runtime: ["active", "idle", "systemError", "notLoaded"].includes(runtime)
             ? (runtime as ThreadSnapshot["runtime"])
             : "unknown",
-        blocked,
+        blocked: blockedReason !== null,
+        blockedReason,
         continuationId: /\[codex-whip:([0-9a-f:-]+)\]/i.exec(userText)?.[1] ?? null,
         fingerprint: createHash("sha256")
             .update(

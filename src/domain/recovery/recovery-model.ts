@@ -11,10 +11,12 @@ export interface Conversation {
 
 export interface ThreadSnapshot extends Conversation {
     turnId: string;
+    turnStartedAt: number | null;
     turnStatus: TurnStatus;
     quotaFailure: boolean;
     runtime: "active" | "idle" | "systemError" | "notLoaded" | "unknown";
     blocked: boolean;
+    blockedReason: string | null;
     fingerprint: string;
     continuationId: string | null;
 }
@@ -56,6 +58,12 @@ export interface Activity {
     message: string;
     threadId?: string;
     recoveryId?: string;
+}
+
+export interface MonitoringIssue {
+    key: string;
+    reason: string;
+    observedAt: number;
 }
 
 export interface WatchScope {

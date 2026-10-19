@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteRecoveryStore } from "../src/infrastructure/persistence/sqlite-recovery-store.ts";
@@ -22,6 +23,29 @@ const recovery = (): Recovery => ({
     confirmation: null,
 });
 
+test("version-one databases upgrade without losing observed failures", () => {
+    const directory = mkdtempSync(join(tmpdir(), "codex-whip-test-"));
+    const path = join(directory, "state.sqlite");
+    try {
+        const legacy = new DatabaseSync(path);
+        legacy.exec(
+            readFileSync(new URL("../migrations/001-recovery.sql", import.meta.url), "utf8"),
+        );
+        legacy.prepare("INSERT INTO observed_threads VALUES (?,?)").run(THREAD, TURN);
+        legacy.close();
+        const upgraded = new SqliteRecoveryStore(path);
+        try {
+            assert.equal(upgraded.seen(THREAD), TURN);
+            upgraded.setIssue({ key: THREAD, reason: "Blocked", observedAt: 1000 });
+            assert.equal(upgraded.issues().length, 1);
+        } finally {
+            upgraded.close();
+        }
+    } finally {
+        rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("pending state, deduplication and dispatch intent survive reopening the database", () => {
     const directory = mkdtempSync(join(tmpdir(), "codex-whip-test-"));
     const path = join(directory, "state.sqlite");
@@ -29,12 +53,16 @@ test("pending state, deduplication and dispatch intent survive reopening the dat
         const first = new SqliteRecoveryStore(path);
         assert.equal(first.add(recovery()), true);
         first.markSeen(THREAD, TURN);
+        first.setIssue({ key: THREAD, reason: "Snapshot unavailable", observedAt: 1000 });
         first.pause(true);
         first.close();
         const second = new SqliteRecoveryStore(path);
         assert.equal(second.recoveries()[0]?.dueAt, 2000);
         assert.equal(second.add(recovery()), false);
         assert.equal(second.seen(THREAD), TURN);
+        assert.equal(second.issues()[0]?.reason, "Snapshot unavailable");
+        second.clearIssue(THREAD);
+        assert.equal(second.issues().length, 0);
         assert.equal(second.claim(recovery().id, 3000), false);
         second.pause(false);
         assert.equal(second.claim(recovery().id, 3000), true);

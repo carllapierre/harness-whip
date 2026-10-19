@@ -7,6 +7,8 @@ Run `npm run check` for types, lint, formatting, behavioral tests and production
 
 - Quota enum classification, unknown/stale quota and later exhausted reset windows.
 - Canonical desktop history completeness and correlation markers.
+- Omitted optional desktop flags with authoritative persisted metadata, blocked
+  failure visibility, early manual resets and upgrading existing state databases.
 - Baseline historical failures and an observed running turn failing under the same ID.
 - Manual continuation, interruption, archival, changed settings and pending input.
 - Final-check races, pause/exclusion at claim time and shutdown before dispatch.
@@ -26,18 +28,25 @@ metadata, turn-history reads, quota reads, queue reads and version-11 desktop
 snapshot transport. The separate global CLI `0.104.0` lacks `queue` and is unsuitable
 for this desktop adapter. `doctor --thread UUID` checks the full live inspection path.
 
-Not yet verified against a real quota-reset cycle: desktop dispatch and its
-continuation marker, full headless execution, macOS/Linux live integration, or
-cloud sandbox lifecycle. Protocol and engine behavior have synthetic tests;
-that evidence is narrower than a real overnight integration result.
+On 2026-10-18, a real desktop quota failure exposed an eligibility bug: IPC omitted
+the optional `ephemeral` flag while official metadata confirmed a persisted chat.
+Whip silently rejected it, and status omitted that rejection. After fixing both,
+the background watcher recorded the existing observed failure, read available
+capacity after the user had manually reset their account, submitted exactly one
+continuation and confirmed its marker in the same chat's new active turn.
+
+Natural scheduled-reset recovery, full headless execution, macOS/Linux live
+integration and cloud sandbox lifecycle remain unverified. Early reset polling
+has regression coverage; the live incident verified recovery after restored
+capacity, rather than waiting out a complete exhausted window.
 
 The default proxy socket did not connect on the inspected Windows installation.
 Proxy mode requires a deliberately running compatible shared server. Desktop mode
 uses its own snapshot channel, so that probe does not block desktop reads.
 
-No existing conversation was sent a continuation during development. No background
-watcher, operating-system scheduled task, account setting or paid API fallback was
-installed automatically. A long-lived watcher must be started explicitly.
+At the user's request, a Windows sign-in task now runs the watcher on the
+development machine. Installation elsewhere does not register a startup task.
+Whip does not redeem account resets or configure a paid API fallback.
 
 ## Before advertising a tested platform
 

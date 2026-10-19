@@ -48,8 +48,8 @@ Completed work, manual stops, approvals and queued user messages are left alone.
 Uncertain delivery needs manual inspection. The default budget is three automatic
 attempts per conversation.
 
-Experimental: Windows desktop reads are verified; a real overnight quota-reset
-continuation is still unverified. See [compatibility](docs/verification.md).
+Experimental: Windows desktop recovery after a manual account reset is verified.
+Natural overnight reset recovery remains unverified. See [compatibility](docs/verification.md).
 
 ## Contribute
 

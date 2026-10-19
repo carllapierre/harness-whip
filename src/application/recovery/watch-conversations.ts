@@ -17,7 +17,7 @@ export interface WatchOptions {
 
 export class WatchConversations {
     private nextDispatch = 0;
-    private errors = new Map<string, string>();
+    private startedAt: number;
 
     constructor(
         private codex: CodexConnection,
@@ -25,7 +25,9 @@ export class WatchConversations {
         private clock: Clock,
         private events: EventSink,
         private options: WatchOptions,
-    ) {}
+    ) {
+        this.startedAt = clock.now();
+    }
 
     private emit(kind: string, message: string, threadId?: string, recoveryId?: string): void {
         const event = { at: this.clock.now(), kind, message, threadId, recoveryId };
@@ -50,8 +52,9 @@ export class WatchConversations {
 
     private reportError(key: string, error: unknown): void {
         const message = error instanceof Error ? error.message : "Unknown connection error";
-        if (this.errors.get(key) !== message) {
-            this.errors.set(key, message);
+        const previous = this.store.issues().find((issue) => issue.key === key);
+        this.store.setIssue({ key, reason: message, observedAt: this.clock.now() });
+        if (previous?.reason !== message) {
             this.emit("attention", message, key === "connection" ? undefined : key);
         }
     }
@@ -61,9 +64,14 @@ export class WatchConversations {
             return;
         }
         const threads = await this.codex.listConversations();
-        this.errors.delete("connection");
+        this.store.clearIssue("connection");
         const selected = threads.filter((thread) => this.selected(thread));
         const current = new Set(selected.map((thread) => thread.id));
+        for (const issue of this.store.issues()) {
+            if (issue.key !== "connection" && !current.has(issue.key)) {
+                this.store.clearIssue(issue.key);
+            }
+        }
         for (const recovery of this.store
             .recoveries()
             .filter((entry) => entry.status === "waiting")) {
@@ -88,7 +96,6 @@ export class WatchConversations {
             }
             try {
                 await this.observe(thread);
-                this.errors.delete(thread.id);
             } catch (error) {
                 this.reportError(thread.id, error);
             }
@@ -101,6 +108,17 @@ export class WatchConversations {
 
     private async observe(thread: Conversation): Promise<void> {
         const snapshot = await this.codex.inspect(thread.id);
+        if (snapshot.turnStatus === "failed" && snapshot.quotaFailure && !eligible(snapshot)) {
+            this.reportError(
+                thread.id,
+                new Error(
+                    snapshot.blockedReason ??
+                        `Usage-limit failure is not resumable: runtime=${snapshot.runtime}, turn=${snapshot.turnId || "unavailable"}`,
+                ),
+            );
+        } else {
+            this.store.clearIssue(thread.id);
+        }
         const now = this.clock.now();
         const seen = this.store.seen(thread.id);
         const existing = this.store
@@ -109,13 +127,19 @@ export class WatchConversations {
                 (entry) => entry.threadId === thread.id && entry.failedTurnId === snapshot.turnId,
             );
         if (seen === null) {
+            const newFailure =
+                snapshot.turnStatus === "failed" &&
+                snapshot.turnStartedAt !== null &&
+                snapshot.turnStartedAt >= this.startedAt;
             this.store.markSeen(
                 thread.id,
-                snapshot.turnStatus === "failed" ? `baseline:${snapshot.turnId}` : snapshot.turnId,
+                snapshot.turnStatus === "failed" && !newFailure
+                    ? `baseline:${snapshot.turnId}`
+                    : snapshot.turnId,
             );
             // Explicit UUID selection may enroll an already failed conversation.
             // Broad scopes establish a baseline instead of resurrecting old failures.
-            if (!this.options.scope.threads.includes(thread.id)) {
+            if (!this.options.scope.threads.includes(thread.id) && !newFailure) {
                 return;
             }
         }
@@ -181,10 +205,12 @@ export class WatchConversations {
             this.clock.now(),
         );
         if (!decision.ready) {
-            this.store.update(recovery.id, "waiting", decision.reason, now, decision.nextCheck);
+            // Read-only polling also notices a manual reset before the original reset time.
+            const nextCheck = Math.min(decision.nextCheck, now + 30_000);
+            this.store.update(recovery.id, "waiting", decision.reason, now, nextCheck);
             this.emit(
                 "wait",
-                `${decision.reason}; check ${new Date(decision.nextCheck).toISOString()}`,
+                `${decision.reason}; check ${new Date(nextCheck).toISOString()}`,
                 thread.id,
                 recovery.id,
             );

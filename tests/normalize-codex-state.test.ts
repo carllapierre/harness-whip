@@ -99,6 +99,32 @@ test("continuation correlation is read only from actual user-message items", () 
     );
 });
 
+test("desktop may omit ephemeral when official metadata confirms a persisted chat", () => {
+    const turn = {
+        turnId: TURN,
+        status: "failed",
+        error: { codexErrorInfo: "usageLimitExceeded" },
+    };
+    const state = {
+        hostId: "local",
+        resumeState: "resumed",
+        requests: [],
+        queuedFollowUps: [],
+        threadRuntimeStatus: { type: "systemError" },
+    };
+    assert.equal(normalizeSnapshot(snapshot(), turn, state, true).blocked, false);
+    for (const ephemeral of [true, null, "false"]) {
+        const result = normalizeSnapshot(snapshot(), turn, { ...state, ephemeral }, true);
+        assert.equal(result.blocked, true);
+        assert.match(result.blockedReason!, /persistence/);
+    }
+    assert.equal(normalizeSnapshot(snapshot({ ephemeral: true }), turn, state, true).blocked, true);
+    assert.equal(
+        normalizeSnapshot(snapshot(), turn, { ...state, requests: [{}] }, true).blocked,
+        true,
+    );
+});
+
 test("quota bucket selection is explicit when several buckets exist", () => {
     const window = { usedPercent: 20, resetsAt: 10_000, windowDurationMins: 300 };
     const result = {

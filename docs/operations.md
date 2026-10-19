@@ -36,6 +36,14 @@ The default lifetime budget is three automatic attempts per conversation; use
 State defaults to `~/.codex-whip/whip.sqlite` (or `CODEX_WHIP_HOME`); use the same
 `--state-dir` for watchers and control commands. `status` counts confirmed new
 continuation turns; it does not claim the underlying work finished.
+Its running indicator confirms the watcher lease. Inspection issues and blocked
+quota failures also count as attention, even when no recovery has been recorded.
+With `--all`, unloaded desktop chats can produce inspection issues; use
+`doctor --thread UUID` to check a particular chat. `status --json` includes all
+issue reasons and timestamps. Successful inspection clears a resolved issue.
+
+Waiting recoveries reread quota every 30 seconds, so a manual reset can release
+them before the original reset timestamp. Whip does not redeem account resets.
 
 Desktop mode uses experimental live IPC snapshots and the installed runtime's
 official queue command. `proxy` attaches to an existing shared app-server with
@@ -74,6 +82,18 @@ The restart delay allows a crashed watcher's two-minute lease to expire. Do not
 run a second service with a different state directory for the same conversations.
 
 ## Windows Task Scheduler
+
+On this installation, the per-user task **Codex Whip** starts 30 seconds after
+Windows sign-in and is configured to restart after failure, with a three-minute
+delay. Its hidden launcher and machine-specific paths live in
+`~/.codex-whip/start-watcher.ps1` and `~/.codex-whip/startup.json`.
+It runs desktop mode with `watch --all --interval 5 --json`.
+
+Use `codex-whip status` to check it. Logs are under `~/.codex-whip/logs/`;
+`current-run.json` names the active process and log files. `codex-whip pause`
+blocks future sends without removing the task. To disable sign-in startup, use
+Task Scheduler or `Disable-ScheduledTask -TaskName 'Codex Whip'` in PowerShell.
+This local setup does not install a startup task for other people who clone the repo.
 
 Create a task running as your current user, while logged on for desktop mode.
 Use the absolute `node.exe` path as the executable, your absolute

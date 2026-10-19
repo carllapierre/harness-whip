@@ -1,4 +1,4 @@
-import type { Activity, Recovery } from "../../domain/recovery/recovery-model.ts";
+import type { Activity, MonitoringIssue, Recovery } from "../../domain/recovery/recovery-model.ts";
 
 export interface RecoveryStore {
     recoveries(): Recovery[];
@@ -14,6 +14,9 @@ export interface RecoveryStore {
     claim(id: string, at: number): boolean;
     seen(threadId: string): string | null;
     markSeen(threadId: string, turnId: string): void;
+    issues(): MonitoringIssue[];
+    setIssue(issue: MonitoringIssue): void;
+    clearIssue(key: string): void;
     excluded(threadId: string): boolean;
     exclude(threadId: string, value: boolean): void;
     paused(): boolean;

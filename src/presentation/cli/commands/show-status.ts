@@ -7,6 +7,13 @@ export function showStatus(store: RecoveryStore, directory: string, json: boolea
     const confirmed = entries.filter((entry) => entry.status === "confirmed");
     const today = new Date(now).toDateString();
     const waiting = entries.filter((entry) => entry.status === "waiting");
+    const issues = store.issues();
+    const attention = new Set([
+        ...entries
+            .filter((entry) => entry.status === "attention" || entry.status === "dispatching")
+            .map((entry) => entry.threadId),
+        ...issues.map((issue) => issue.key),
+    ]);
     const status = {
         paused: store.paused(),
         watcher: store.watcherRunning(now) ? "running" : "stopped",
@@ -19,9 +26,8 @@ export function showStatus(store: RecoveryStore, directory: string, json: boolea
             null,
         ),
         waiting: waiting.length,
-        needsAttention: entries.filter(
-            (entry) => entry.status === "attention" || entry.status === "dispatching",
-        ).length,
+        needsAttention: attention.size,
+        inspectionIssues: issues,
         nextCheck: waiting.length ? Math.min(...waiting.map((entry) => entry.dueAt)) : null,
         recoveries: entries,
     };
@@ -43,6 +49,17 @@ export function showStatus(store: RecoveryStore, directory: string, json: boolea
             `Total whips: ${status.totalWhips} · Today: ${status.whipsToday} · Waiting: ${status.waiting} · Attention: ${status.needsAttention}`,
             `Last whipped: ${status.lastWhip ? new Date(status.lastWhip).toLocaleString() : "never"}`,
             `Next check: ${status.nextCheck ? new Date(status.nextCheck).toLocaleString() : "none"}`,
+            ...(issues.length
+                ? [
+                      `Inspection issues: ${issues.length} · some conversations cannot be recovered automatically`,
+                      ...issues
+                          .slice(0, 5)
+                          .map((issue) => `  ${clean(issue.key)} · ${clean(issue.reason)}`),
+                      ...(issues.length > 5
+                          ? ["  Run codex-whip status --json for all inspection issues."]
+                          : []),
+                  ]
+                : []),
             "",
             rows || "No recoveries recorded.",
             "",

@@ -24,6 +24,15 @@ test("broad scopes baseline historical failures across repeated checks", async (
     assert.equal(f.store.recoveries().length, 0);
 });
 
+test("a newly started turn can hit quota before its first broad-scope observation", async (t) => {
+    const f = fixture({ scope: { all: true, projects: [], threads: [], excludedThreads: [] } });
+    t.after(() => f.store.close());
+    f.codex.state.turnStartedAt = f.clock.value + 1;
+    f.clock.value += 100;
+    await f.watcher.tick();
+    assert.equal(f.codex.sends.length, 1);
+});
+
 test("a running turn observed by a broad scope may later fail with the same turn ID", async (t) => {
     const f = fixture({ scope: { all: true, projects: [], threads: [], excludedThreads: [] } });
     t.after(() => f.store.close());
@@ -42,13 +51,13 @@ test("capacity is reread after reset and a moved reset is persisted", async (t) 
     f.codex.quotaState.windows[0]!.usedPercent = 100;
     f.codex.quotaState.windows[0]!.resetsAt = f.clock.value + 100_000;
     await f.watcher.tick();
-    assert.equal(f.store.recoveries()[0]?.dueAt, f.clock.value + 115_000);
+    assert.equal(f.store.recoveries()[0]?.dueAt, f.clock.value + 30_000);
     f.clock.value += 115_000;
     f.codex.quotaState.observedAt = f.clock.value;
     f.codex.quotaState.windows[0]!.resetsAt = f.clock.value + 200_000;
     await f.watcher.tick();
     assert.equal(f.codex.sends.length, 0);
-    assert.equal(f.store.recoveries()[0]?.dueAt, f.clock.value + 215_000);
+    assert.equal(f.store.recoveries()[0]?.dueAt, f.clock.value + 30_000);
     f.clock.value += 215_000;
     f.codex.quotaState.observedAt = f.clock.value;
     f.codex.quotaState.windows[0]!.usedPercent = 30;
@@ -73,6 +82,61 @@ test("manual continuation or settings changes cancel pending recovery", async (t
         assert.equal(f.store.recoveries()[0]?.status, "canceled");
         assert.equal(f.codex.sends.length, 0);
     }
+});
+
+test("an early manual reset is detected before the original exhausted window resets", async (t) => {
+    const f = fixture();
+    t.after(() => f.store.close());
+    f.codex.quotaState.windows[0]!.usedPercent = 100;
+    f.codex.quotaState.windows[0]!.resetsAt = f.clock.value + 18_000_000;
+    await f.watcher.tick();
+    f.codex.quotaState.windows[0]!.usedPercent = 0;
+    f.clock.value += 30_000;
+    f.codex.quotaState.observedAt = f.clock.value;
+    await f.watcher.tick();
+    await f.watcher.tick();
+    assert.equal(f.codex.sends.length, 1);
+    assert.equal(f.store.recoveries()[0]?.status, "confirmed");
+});
+
+test("blocked quota failures are visible and inspection issues clear after recovery", async (t) => {
+    const f = fixture();
+    t.after(() => f.store.close());
+    f.codex.state.blocked = true;
+    f.codex.state.blockedReason = "Desktop approval is pending";
+    await f.watcher.tick();
+    await f.watcher.tick();
+    assert.equal(f.codex.sends.length, 0);
+    assert.equal(f.store.issues()[0]?.reason, "Desktop approval is pending");
+    assert.equal(f.events.filter((event) => event.kind === "attention").length, 1);
+    f.codex.state.blocked = false;
+    f.codex.state.blockedReason = null;
+    await f.watcher.tick();
+    assert.equal(f.codex.sends.length, 1);
+    assert.equal(f.store.issues().length, 0);
+});
+
+test("failed inspections persist as issues even when no recovery exists", async (t) => {
+    const f = fixture();
+    t.after(() => f.store.close());
+    f.codex.onInspect = () => {
+        throw new Error("Snapshot unavailable");
+    };
+    await f.watcher.tick();
+    assert.equal(f.store.recoveries().length, 0);
+    assert.equal(f.store.issues()[0]?.key, THREAD);
+    f.codex.listed = false;
+    await f.watcher.tick();
+    assert.equal(f.store.issues().length, 0);
+});
+
+test("an unknown runtime cannot silently hide an observed quota failure", async (t) => {
+    const f = fixture();
+    t.after(() => f.store.close());
+    f.codex.state.runtime = "unknown";
+    await f.watcher.tick();
+    assert.equal(f.codex.sends.length, 0);
+    assert.match(f.store.issues()[0]!.reason, /runtime=unknown/);
 });
 
 test("uncertain delivery is recorded and never automatically retried", async (t) => {
