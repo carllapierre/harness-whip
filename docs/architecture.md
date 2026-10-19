@@ -51,6 +51,11 @@ leftover dispatching entries become attention entries. A unique constraint on
 thread ID and failed turn ID makes canceled, confirmed and uncertain entries
 terminal for that failure. We never delete the ledger to enable a retry.
 
+There is no lifetime whip budget. Each distinct eligible quota failure can be
+recovered once. An upgrade returns records blocked solely by the retired budget
+guard to waiting only when no dispatch event or confirmation exists; the usual
+quota, scope and conversation rechecks still apply.
+
 Pause/exclusion checks participate in the same SQL update as the dispatch claim.
 The claim also verifies the watcher's current lease owner and expiry, so a
 resumed process cannot send using a lease that another process took over.

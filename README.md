@@ -45,8 +45,7 @@ See `codex-whip --help` for all options.
 Only confirmed quota failures qualify. Whip rechecks capacity and conversation
 state before sending, preserves execution settings, and prevents duplicate sends.
 Completed work, manual stops, approvals and queued user messages are left alone.
-Uncertain delivery needs manual inspection. The default budget is three automatic
-attempts per conversation.
+Uncertain delivery needs manual inspection. There is no per-conversation whip cap.
 
 Experimental: Windows desktop recovery after a manual account reset is verified.
 Natural overnight reset recovery remains unverified. See [compatibility](docs/verification.md).

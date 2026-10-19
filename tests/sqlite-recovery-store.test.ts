@@ -76,6 +76,109 @@ test("pending state, deduplication and dispatch intent survive reopening the dat
     }
 });
 
+test("upgrade releases unsent budget-blocked recoveries and preserves every delivery guard", () => {
+    const directory = mkdtempSync(join(tmpdir(), "codex-whip-test-"));
+    const path = join(directory, "state.sqlite");
+    const budget = "Per-conversation whip budget reached";
+    const entries: Recovery[] = [
+        {
+            ...recovery(),
+            id: "unsent",
+            failedTurnId: "unsent",
+            status: "attention",
+            reason: budget,
+        },
+        {
+            ...recovery(),
+            id: "uncertain",
+            failedTurnId: "uncertain",
+            status: "attention",
+            reason: "Delivery uncertain; automatic retry disabled",
+        },
+        { ...recovery(), id: "sent", failedTurnId: "sent", status: "attention", reason: budget },
+        {
+            ...recovery(),
+            id: "confirmed",
+            failedTurnId: "confirmed",
+            status: "confirmed",
+            reason: budget,
+            confirmation: "new-turn",
+        },
+        {
+            ...recovery(),
+            id: "canceled",
+            failedTurnId: "canceled",
+            status: "canceled",
+            reason: budget,
+        },
+        {
+            ...recovery(),
+            id: "receipt",
+            failedTurnId: "receipt",
+            status: "attention",
+            reason: budget,
+            confirmation: "accepted-turn",
+        },
+        {
+            ...recovery(),
+            id: "dispatching",
+            failedTurnId: "dispatching",
+            status: "dispatching",
+            reason: budget,
+        },
+    ];
+    try {
+        const legacy = new DatabaseSync(path);
+        for (const migration of ["001-recovery.sql", "002-monitoring-issues.sql"]) {
+            legacy.exec(
+                readFileSync(new URL(`../migrations/${migration}`, import.meta.url), "utf8"),
+            );
+        }
+        for (const entry of entries) {
+            legacy
+                .prepare("INSERT INTO recoveries VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+                .run(
+                    entry.id,
+                    entry.threadId,
+                    entry.failedTurnId,
+                    entry.project,
+                    entry.title,
+                    entry.fingerprint,
+                    entry.status,
+                    entry.dueAt,
+                    entry.createdAt,
+                    entry.updatedAt,
+                    entry.reason,
+                    entry.confirmation,
+                );
+        }
+        legacy
+            .prepare(
+                "INSERT INTO activity(at,kind,message,recovery_id) VALUES (1000,'send','Dispatch intent saved','sent')",
+            )
+            .run();
+        legacy.close();
+        const upgraded = new SqliteRecoveryStore(path);
+        try {
+            const restored = upgraded.recoveries().find((entry) => entry.id === "unsent")!;
+            assert.equal(restored.status, "waiting");
+            assert.equal(restored.dueAt, 0);
+            assert.equal(restored.fingerprint, recovery().fingerprint);
+            for (const original of entries.filter((entry) => entry.id !== "unsent")) {
+                assert.deepEqual(
+                    { ...upgraded.recoveries().find((entry) => entry.id === original.id) },
+                    original,
+                );
+            }
+            assert.equal(upgraded.history(10)[0]?.kind, "send");
+        } finally {
+            upgraded.close();
+        }
+    } finally {
+        rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test("two store connections cannot both claim the same recovery or watcher lease", () => {
     const directory = mkdtempSync(join(tmpdir(), "codex-whip-test-"));
     const path = join(directory, "state.sqlite");

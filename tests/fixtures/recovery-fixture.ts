@@ -83,7 +83,6 @@ export function fixture(overrides: Partial<WatchOptions> = {}) {
     const options: WatchOptions = {
         scope: { all: false, projects: [], threads: [THREAD], excludedThreads: [] },
         dryRun: false,
-        maxWhips: 3,
         staggerMs: 10_000,
         matchesProject: (project, selected) => project === selected,
         ...overrides,

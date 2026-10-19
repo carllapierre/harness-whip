@@ -204,15 +204,19 @@ test("archival or leaving the scope cancels pending work", async (t) => {
     assert.equal(f.store.recoveries()[0]?.status, "canceled");
 });
 
-test("the per-conversation attempt budget survives new failed turns", async (t) => {
-    const f = fixture({ maxWhips: 1 });
+test("distinct quota failures continue without a per-conversation cap and never duplicate a send", async (t) => {
+    const f = fixture();
     t.after(() => f.store.close());
-    await f.watcher.tick();
-    f.clock.value += 11_000;
-    f.codex.state.turnId = "another-quota-failure";
-    await f.watcher.tick();
-    assert.equal(f.codex.sends.length, 1);
-    assert.equal(f.store.recoveries().filter((entry) => entry.status === "attention").length, 1);
+    for (let index = 0; index < 20; index++) {
+        f.codex.state.turnId = `quota-failure-${index}`;
+        f.codex.quotaState.observedAt = f.clock.value;
+        await f.watcher.tick();
+        await f.watcher.tick();
+        assert.equal(f.codex.sends.length, index + 1);
+        f.clock.value += 11_000;
+    }
+    assert.equal(f.store.recoveries().filter((entry) => entry.status === "confirmed").length, 20);
+    assert.equal(f.store.recoveries().filter((entry) => entry.status === "attention").length, 0);
 });
 
 test("shutdown requested during a check prevents dispatch", async (t) => {

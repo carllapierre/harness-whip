@@ -36,7 +36,6 @@ Operation:
   --dry-run          Observe and schedule; never submit a continuation
   --once             Run one watch cycle and exit
   --interval SEC     Check interval, 5–3600 (default 30)
-  --max-whips N      Lifetime automatic attempts per conversation (default 3)
   --state-dir PATH   State directory (or CODEX_WHIP_HOME; default ~/.codex-whip)
   --limit N          Number of history events (default 30)
   --json             Newline-delimited JSON output
@@ -69,7 +68,6 @@ export function parseArguments(args: string[]) {
             "dry-run": { type: "boolean" },
             once: { type: "boolean" },
             interval: { type: "string", default: "30" },
-            "max-whips": { type: "string", default: "3" },
             "state-dir": { type: "string" },
             limit: { type: "string", default: "30" },
             json: { type: "boolean" },
@@ -108,7 +106,6 @@ export function parseArguments(args: string[]) {
         dryRun: values["dry-run"] ?? false,
         once: values.once ?? false,
         intervalMs: number(values.interval, "--interval", 5, 3600) * 1000,
-        maxWhips: number(values["max-whips"], "--max-whips", 1, 1000),
         limit: number(values.limit, "--limit", 1, 1000),
         stateDir: values["state-dir"],
         json: values.json ?? false,

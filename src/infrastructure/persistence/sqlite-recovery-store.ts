@@ -15,13 +15,14 @@ export class SqliteRecoveryStore implements RecoveryStore {
         this.db = new DatabaseSync(path);
         this.db.exec("PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
         const version = this.db.prepare("PRAGMA user_version").get()?.user_version;
-        if (typeof version === "number" && version > 2) {
+        if (typeof version === "number" && version > 3) {
             this.db.close();
             throw new Error("State was created by a newer Codex Whip; upgrade this installation");
         }
         for (const [index, migration] of [
             "001-recovery.sql",
             "002-monitoring-issues.sql",
+            "003-remove-whip-budget.sql",
         ].entries()) {
             if (Number(version) <= index) {
                 this.db.exec(

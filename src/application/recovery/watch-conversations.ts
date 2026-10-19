@@ -9,7 +9,6 @@ export interface WatchOptions {
     scope: WatchScope;
     bucket?: string;
     dryRun: boolean;
-    maxWhips: number;
     staggerMs: number;
     matchesProject: (project: string, selected: string) => boolean;
     shouldStop?: () => boolean;
@@ -214,25 +213,6 @@ export class WatchConversations {
                 thread.id,
                 recovery.id,
             );
-            return;
-        }
-        const count = this.store
-            .recoveries()
-            .filter(
-                (entry) =>
-                    entry.threadId === thread.id &&
-                    (entry.status === "confirmed" ||
-                        entry.status === "dispatching" ||
-                        entry.status === "attention"),
-            ).length;
-        if (count >= this.options.maxWhips) {
-            this.store.update(
-                recovery.id,
-                "attention",
-                "Per-conversation whip budget reached",
-                now,
-            );
-            this.emit("attention", "Per-conversation whip budget reached", thread.id, recovery.id);
             return;
         }
         const fresh = await this.codex.inspect(thread.id);

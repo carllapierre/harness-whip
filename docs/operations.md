@@ -31,8 +31,8 @@ and cancels its waiting recovery; `include --thread UUID` removes that exclusion
 Canceled or uncertain recovery records are not automatically retried for the same
 failed turn. A later distinct quota failure can qualify.
 
-The default lifetime budget is three automatic attempts per conversation; use
-`--max-whips N` to change it. Recoveries are staggered by at least ten seconds.
+There is no per-conversation whip cap. Each distinct quota failure can qualify;
+recoveries are staggered by at least ten seconds.
 State defaults to `~/.codex-whip/whip.sqlite` (or `CODEX_WHIP_HOME`); use the same
 `--state-dir` for watchers and control commands. `status` counts confirmed new
 continuation turns; it does not claim the underlying work finished.
@@ -118,7 +118,7 @@ Avoid copying a running desktop's database directory into a different environmen
 Use `status` and `history` to find the exact thread. Inspect it in Codex. If the
 message was accepted, let that work proceed. If it was not, continue manually.
 The same failed turn remains blocked from automatic resend; a later distinct
-quota-failed turn can qualify within its lifetime budget.
+quota-failed turn can qualify.
 
 Run all controls with the same `--state-dir` or `CODEX_WHIP_HOME` as the watcher.
 Do not delete uncertain-dispatch records to force another automatic send.

@@ -12,7 +12,8 @@ Run `npm run check` for types, lint, formatting, behavioral tests and production
 - Baseline historical failures and an observed running turn failing under the same ID.
 - Manual continuation, interruption, archival, changed settings and pending input.
 - Final-check races, pause/exclusion at claim time and shutdown before dispatch.
-- Uncertain delivery and cumulative per-conversation attempt limits.
+- Uncertain delivery, repeated distinct quota failures without a conversation cap,
+  and upgrading budget-blocked recoveries while preserving recorded sends.
 - Actual SQLite reopen, durable intent, deduplication, two database connections
   competing for one claim and watcher lease expiry.
 - RPC request correlation, timeouts, disconnects, and refusing approval requests.

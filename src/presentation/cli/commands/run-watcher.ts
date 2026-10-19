@@ -48,7 +48,6 @@ export async function runWatcher(
                 scope: options.scope,
                 bucket: options.bucket,
                 dryRun: options.dryRun,
-                maxWhips: options.maxWhips,
                 staggerMs: 10_000,
                 matchesProject,
                 shouldStop: () => controller.signal.aborted,
