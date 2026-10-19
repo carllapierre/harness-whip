@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.cache/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-*
+*.log
+output/

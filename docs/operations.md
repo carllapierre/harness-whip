@@ -1,0 +1,104 @@
+# Running as a process
+
+Start with `doctor`, then `watch --dry-run`. Run foreground initially so you can
+see connection errors and inspect `status`. The process remains active until
+SIGINT/SIGTERM, even when there is no pending work.
+
+## Install the command
+
+From a source checkout, run `npm ci`, `npm run build`, then `npm link`.
+This links the package's `codex-whip` executable into npm's global command directory.
+Keep the checkout in place and rebuild after source changes; the linked command
+uses that build from any working directory. Remove the link with
+`npm uninstall --global codex-whip`.
+
+For a standalone installation, run `npm pack`, then
+`npm install --global ./codex-whip-0.1.0.tgz`. The installed package has no runtime
+npm dependencies. This project has not been published to the npm registry.
+
+If the command is not found, check `npm prefix --global`: add that directory to
+PATH on Windows, or its `bin` subdirectory on macOS/Linux, then open a new terminal.
+
+## Controls and scope
+
+`watch --project PATH` includes descendants of the selected directory. Repeat the
+option for other projects or separate worktrees. Subagent and ephemeral sessions
+are excluded. `--thread UUID` explicitly selects a conversation and can enroll an
+existing quota failure; broad scopes baseline failures already present.
+
+`history --limit 50` shows recent events. `cancel --thread UUID` excludes a chat
+and cancels its waiting recovery; `include --thread UUID` removes that exclusion.
+Canceled or uncertain recovery records are not automatically retried for the same
+failed turn. A later distinct quota failure can qualify.
+
+The default lifetime budget is three automatic attempts per conversation; use
+`--max-whips N` to change it. Recoveries are staggered by at least ten seconds.
+State defaults to `~/.codex-whip/whip.sqlite` (or `CODEX_WHIP_HOME`); use the same
+`--state-dir` for watchers and control commands. `status` counts confirmed new
+continuation turns; it does not claim the underlying work finished.
+
+Desktop mode uses experimental live IPC snapshots and the installed runtime's
+official queue command. `proxy` attaches to an existing shared app-server with
+`--socket PATH`. `stdio` owns a child server for headless work. It cannot answer
+approval requests, user questions or client-provided tool requests.
+
+`--json` emits one JSON object per line; errors go to stderr. Color is enabled
+only for a terminal and honors `NO_COLOR` and `--no-color`. Use `--codex PATH`,
+`--codex-home PATH` or `--limit-id ID` to select a runtime, history or usage bucket.
+See `--help` for the full command reference.
+
+## Linux systemd example
+
+After installing/building your checkout, adapt absolute paths for your machine:
+
+```ini
+[Unit]
+Description=Codex Whip quota recovery
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/you/codex-whip
+ExecStart=/usr/bin/node /home/you/codex-whip/bin/codex-whip.mjs watch --connection stdio --project /workspace/project --json
+Environment=CODEX_HOME=/home/you/.codex
+Environment=CODEX_WHIP_HOME=/home/you/.codex-whip
+Restart=on-failure
+RestartSec=125
+
+[Install]
+WantedBy=default.target
+```
+
+Install as a user service only after reviewing the paths and connection mode.
+The restart delay allows a crashed watcher's two-minute lease to expire. Do not
+run a second service with a different state directory for the same conversations.
+
+## Windows Task Scheduler
+
+Create a task running as your current user, while logged on for desktop mode.
+Use the absolute `node.exe` path as the executable, your absolute
+`bin/codex-whip.mjs` path followed by `watch --project <absolute-project-path>`
+as arguments, and the checkout as the working directory. Set restart delay to
+at least two minutes. Keep the Codex desktop app and target conversation loaded.
+The CLI does not register the task or change power settings itself.
+
+## Containers and sandboxes
+
+Install Node 22.18+ and a compatible Codex executable. Authenticate using Codex's
+supported mechanism in that environment. Mount the project, Codex home and Whip
+state persistently. Run one foreground `watch --connection stdio` process through
+your supervisor. No inbound port or browser interface is required.
+
+The sandbox must live long enough to reach reset. Ephemeral compute that is
+destroyed at disconnect will not resume itself; use durable supervision and storage.
+Avoid copying a running desktop's database directory into a different environment.
+
+## Investigating attention entries
+
+Use `status` and `history` to find the exact thread. Inspect it in Codex. If the
+message was accepted, let that work proceed. If it was not, continue manually.
+The same failed turn remains blocked from automatic resend; a later distinct
+quota-failed turn can qualify within its lifetime budget.
+
+Run all controls with the same `--state-dir` or `CODEX_WHIP_HOME` as the watcher.
+Do not delete uncertain-dispatch records to force another automatic send.
