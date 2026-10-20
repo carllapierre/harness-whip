@@ -11,7 +11,7 @@ import { THREAD } from "./fixtures/recovery-fixture.ts";
 async function serverFixture(version: number) {
     const endpoint =
         process.platform === "win32"
-            ? `\\\\.\\pipe\\codex-whip-test-${randomUUID()}`
+            ? `\\\\.\\pipe\\harness-whip-test-${randomUUID()}`
             : join(tmpdir(), `whip-${randomUUID()}.sock`);
     const server = createServer((socket) => {
         let buffer = Buffer.alloc(0);

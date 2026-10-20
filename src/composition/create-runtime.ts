@@ -1,6 +1,6 @@
 import { join, resolve, relative, isAbsolute, sep } from "node:path";
 import { homedir } from "node:os";
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { SqliteRecoveryStore } from "../infrastructure/persistence/sqlite-recovery-store.ts";
 import {
     NativeCodexConnection,
@@ -19,8 +19,23 @@ export interface RuntimeOptions {
     noColor: boolean;
 }
 
-export function stateDirectory(explicit?: string): string {
-    return resolve(explicit ?? process.env.CODEX_WHIP_HOME ?? join(homedir(), ".codex-whip"));
+export function stateDirectory(explicit?: string, home = homedir()): string {
+    const configured = explicit ?? process.env.HARNESS_WHIP_HOME ?? process.env.CODEX_WHIP_HOME;
+    if (configured) {
+        return resolve(configured);
+    }
+    const current = join(home, ".harness-whip");
+    const legacy = join(home, ".codex-whip");
+    if (existsSync(join(legacy, "whip.sqlite"))) {
+        if (existsSync(join(current, "whip.sqlite"))) {
+            throw new Error(
+                "Both Harness Whip and legacy Codex Whip state exist; choose --state-dir explicitly",
+            );
+        }
+        // Reuse the ledger, pause controls and lease rather than creating a second watcher.
+        return legacy;
+    }
+    return current;
 }
 
 export function projectPath(path: string): string {

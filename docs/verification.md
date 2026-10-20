@@ -36,8 +36,8 @@ the background watcher recorded the existing observed failure, read available
 capacity after the user had manually reset their account, submitted exactly one
 continuation and confirmed its marker in the same chat's new active turn.
 
-Natural scheduled-reset recovery, full headless execution, macOS/Linux live
-integration and cloud sandbox lifecycle remain unverified. Early reset polling
+Natural scheduled-reset recovery, full headless execution, macOS recovery
+dispatch, Linux live integration and cloud sandbox lifecycle remain unverified. Early reset polling
 has regression coverage; the live incident verified recovery after restored
 capacity, rather than waiting out a complete exhausted window.
 
@@ -45,9 +45,40 @@ The default proxy socket did not connect on the inspected Windows installation.
 Proxy mode requires a deliberately running compatible shared server. Desktop mode
 uses its own snapshot channel, so that probe does not block desktop reads.
 
-At the user's request, a Windows sign-in task now runs the watcher on the
-development machine. Installation elsewhere does not register a startup task.
+The previously verified Windows development setup included a user-requested
+sign-in task running the watcher. Installation elsewhere does not register a startup task.
 Whip does not redeem account resets or configure a paid API fallback.
+
+## macOS evidence (2026-10-19)
+
+Checked on **macOS 26.7 (25G229), Apple Silicon arm64**, using **Node 22.19.0**
+and the ChatGPT app's bundled **codex-cli 0.162.0-alpha.2**.
+
+- Found and fixed a discovery gap: this runtime lives under
+  `ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`,
+  rather than directly in `Resources`. System and user Applications folders are
+  now searched. Explicit paths are checked for executable permissions on Unix.
+- `doctor` completed with automatic discovery: initialization, paginated thread
+  discovery and account quota reads succeeded.
+- Read-only inspection of a loaded conversation in this checkout succeeded:
+  official thread metadata and queue reads plus a version-11 desktop snapshot
+  over the default Unix socket agreed on the exact thread.
+- `watch --project . --dry-run --once` completed successfully with isolated test
+  state. It observed an active conversation; no quota failure was induced and
+  no continuation was submitted.
+- The bundled runtime's `queue --help` exposes `--thread` and `--message`.
+  This verifies command availability, not successful delivery.
+- The terminal initially selected Node 20.20.1, below the minimum. A launcher
+  version check now reports Node 22.18+ explicitly; `.nvmrc` selects Node 22.
+- `npm run check` passed locally on Node 22.19.0: typecheck, lint, formatting,
+  all 47 behavioral tests and production build. `npm pack --dry-run` included
+  both executable names, compiled modules and migrations, with no runtime
+  database, credentials or conversation payloads in the package.
+
+No real quota reset, recovery send, background startup, sleep/wake cycle, Intel
+Mac, or full headless execution has been verified on macOS. Existing CI declares
+macOS, Windows and Ubuntu jobs on Node 22/24; a declared matrix alone does not
+establish that a particular hosted run passed.
 
 ## Before advertising a tested platform
 

@@ -4,9 +4,10 @@ import type { ConnectionMode } from "../../infrastructure/codex/codex-connection
 import { uuid } from "../../infrastructure/codex/protocol-values.ts";
 
 export const HELP = `
-Codex Whip 0.1.0 — Pick up where Codex left off.
+Harness Whip 0.1.0 — Pick up where your agent left off.
+Currently supports Codex only; more subscriptions are planned.
 
-Usage: codex-whip <command> [options]
+Usage: harness-whip <command> [options]
 
 Commands:
   watch       Watch selected conversations and recover quota failures
@@ -36,7 +37,7 @@ Operation:
   --dry-run          Observe and schedule; never submit a continuation
   --once             Run one watch cycle and exit
   --interval SEC     Check interval, 5–3600 (default 30)
-  --state-dir PATH   State directory (or CODEX_WHIP_HOME; default ~/.codex-whip)
+  --state-dir PATH   State directory (or HARNESS_WHIP_HOME; default ~/.harness-whip)
   --limit N          Number of history events (default 30)
   --json             Newline-delimited JSON output
   --no-color        Disable ANSI colors (also honors NO_COLOR)
@@ -45,6 +46,7 @@ Operation:
 
 Broad scopes baseline existing failures. --thread may enroll an existing quota
 failure. Restart with the same scope to keep its pending recoveries active.
+Existing ~/.codex-whip state and CODEX_WHIP_HOME remain supported.
 Closing a terminal stops the process. Use a supervisor for unattended operation.
 `;
 

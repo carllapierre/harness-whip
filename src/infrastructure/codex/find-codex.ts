@@ -1,38 +1,56 @@
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, readdirSync, statSync } from "node:fs";
 import { join, delimiter, resolve } from "node:path";
 import { homedir } from "node:os";
 
-export function findCodex(explicit?: string): string {
+function executable(path: string): boolean {
+    try {
+        accessSync(path, process.platform === "win32" ? constants.F_OK : constants.X_OK);
+        return statSync(path).isFile();
+    } catch {
+        return false;
+    }
+}
+
+function desktopResources(): string[] {
+    if (process.platform === "win32") {
+        return process.env.LOCALAPPDATA
+            ? [join(process.env.LOCALAPPDATA, "OpenAI", "Codex", "bin")]
+            : [];
+    }
+    if (process.platform === "darwin") {
+        return ["/Applications", join(homedir(), "Applications")].flatMap((directory) =>
+            ["ChatGPT.app", "Codex.app"].map((app) =>
+                join(directory, app, "Contents", "Resources"),
+            ),
+        );
+    }
+    return [];
+}
+
+export function findCodex(explicit?: string, desktopRoots = desktopResources()): string {
     if (explicit) {
         const path = resolve(explicit);
-        if (!existsSync(path)) {
-            throw new Error("The configured Codex executable does not exist");
+        if (!executable(path)) {
+            throw new Error("The configured Codex executable is missing or not executable");
         }
         return path;
     }
-    const desktopRoots =
-        process.platform === "win32"
-            ? [join(process.env.LOCALAPPDATA ?? "", "OpenAI", "Codex", "bin")]
-            : [
-                  "/Applications/ChatGPT.app/Contents/Resources",
-                  "/Applications/Codex.app/Contents/Resources",
-              ];
     const candidates: string[] = [];
     for (const root of desktopRoots) {
         if (!existsSync(root)) {
             continue;
         }
         const binary = process.platform === "win32" ? "codex.exe" : "codex";
-        if (existsSync(join(root, binary))) {
-            candidates.push(join(root, binary));
-        }
+        const paths = [
+            join(root, binary),
+            join(root, "codex-cli", "CodexCLI.app", "Contents", "MacOS", "codex"),
+            join(root, "codex-cli", "bin", "codex"),
+        ];
+        candidates.push(...paths.filter(executable));
         for (const entry of readdirSync(root, { withFileTypes: true })) {
-            if (
-                entry.isDirectory() &&
-                /^[a-f0-9]+$/.test(entry.name) &&
-                existsSync(join(root, entry.name, binary))
-            ) {
-                candidates.push(join(root, entry.name, binary));
+            const path = join(root, entry.name, binary);
+            if (entry.isDirectory() && /^[a-f0-9]+$/.test(entry.name) && executable(path)) {
+                candidates.push(path);
             }
         }
     }
@@ -40,9 +58,12 @@ export function findCodex(explicit?: string): string {
         return candidates.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0]!;
     }
     for (const directory of (process.env.PATH ?? "").split(delimiter)) {
-        const executable = join(directory, process.platform === "win32" ? "codex.exe" : "codex");
-        if (existsSync(executable)) {
-            return executable;
+        if (!directory) {
+            continue;
+        }
+        const path = join(directory, process.platform === "win32" ? "codex.exe" : "codex");
+        if (executable(path)) {
+            return path;
         }
         // npm's Windows shim requires cmd.exe. Resolve the actual native binary instead.
         const packages = join(directory, "node_modules", "@openai");
@@ -52,7 +73,7 @@ export function findCodex(explicit?: string): string {
                 if (existsSync(vendor)) {
                     for (const target of readdirSync(vendor)) {
                         const path = join(vendor, target, "codex", "codex.exe");
-                        if (existsSync(path)) {
+                        if (executable(path)) {
                             return path;
                         }
                     }

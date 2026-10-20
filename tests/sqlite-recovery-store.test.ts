@@ -24,7 +24,7 @@ const recovery = (): Recovery => ({
 });
 
 test("version-one databases upgrade without losing observed failures", () => {
-    const directory = mkdtempSync(join(tmpdir(), "codex-whip-test-"));
+    const directory = mkdtempSync(join(tmpdir(), "harness-whip-test-"));
     const path = join(directory, "state.sqlite");
     try {
         const legacy = new DatabaseSync(path);
@@ -47,7 +47,7 @@ test("version-one databases upgrade without losing observed failures", () => {
 });
 
 test("pending state, deduplication and dispatch intent survive reopening the database", () => {
-    const directory = mkdtempSync(join(tmpdir(), "codex-whip-test-"));
+    const directory = mkdtempSync(join(tmpdir(), "harness-whip-test-"));
     const path = join(directory, "state.sqlite");
     try {
         const first = new SqliteRecoveryStore(path);
@@ -77,7 +77,7 @@ test("pending state, deduplication and dispatch intent survive reopening the dat
 });
 
 test("upgrade releases unsent budget-blocked recoveries and preserves every delivery guard", () => {
-    const directory = mkdtempSync(join(tmpdir(), "codex-whip-test-"));
+    const directory = mkdtempSync(join(tmpdir(), "harness-whip-test-"));
     const path = join(directory, "state.sqlite");
     const budget = "Per-conversation whip budget reached";
     const entries: Recovery[] = [
@@ -180,7 +180,7 @@ test("upgrade releases unsent budget-blocked recoveries and preserves every deli
 });
 
 test("two store connections cannot both claim the same recovery or watcher lease", () => {
-    const directory = mkdtempSync(join(tmpdir(), "codex-whip-test-"));
+    const directory = mkdtempSync(join(tmpdir(), "harness-whip-test-"));
     const path = join(directory, "state.sqlite");
     const first = new SqliteRecoveryStore(path);
     const second = new SqliteRecoveryStore(path);
@@ -203,7 +203,7 @@ test("two store connections cannot both claim the same recovery or watcher lease
 });
 
 test("a watcher with an expired or replaced lease cannot claim a dispatch", () => {
-    const directory = mkdtempSync(join(tmpdir(), "codex-whip-test-"));
+    const directory = mkdtempSync(join(tmpdir(), "harness-whip-test-"));
     const path = join(directory, "state.sqlite");
     const store = new SqliteRecoveryStore(path);
     const rival = new SqliteRecoveryStore(path);

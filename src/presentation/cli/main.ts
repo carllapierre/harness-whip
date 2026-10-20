@@ -72,7 +72,7 @@ main().catch((error: unknown) => {
     process.stderr.write(
         process.argv.includes("--json")
             ? `${JSON.stringify({ kind: "error", message })}\n`
-            : `Codex Whip: ${message}\n`,
+            : `Harness Whip: ${message}\n`,
     );
     process.exitCode = 1;
 });

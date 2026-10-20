@@ -44,7 +44,7 @@ export function showStatus(store: RecoveryStore, directory: string, json: boolea
         .join("\n");
     process.stdout.write(
         [
-            `Codex Whip · ${status.watcher}${status.paused ? " · PAUSED" : ""}`,
+            `Harness Whip · ${status.watcher}${status.paused ? " · PAUSED" : ""}`,
             "",
             `Total whips: ${status.totalWhips} · Today: ${status.whipsToday} · Waiting: ${status.waiting} · Attention: ${status.needsAttention}`,
             `Last whipped: ${status.lastWhip ? new Date(status.lastWhip).toLocaleString() : "never"}`,
@@ -56,7 +56,7 @@ export function showStatus(store: RecoveryStore, directory: string, json: boolea
                           .slice(0, 5)
                           .map((issue) => `  ${clean(issue.key)} · ${clean(issue.reason)}`),
                       ...(issues.length > 5
-                          ? ["  Run codex-whip status --json for all inspection issues."]
+                          ? ["  Run harness-whip status --json for all inspection issues."]
                           : []),
                   ]
                 : []),

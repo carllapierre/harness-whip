@@ -23,7 +23,7 @@ export class DesktopSnapshots {
             await session.connected();
             const initialized = await session.request(
                 "initialize",
-                { clientType: "codex-whip" },
+                { clientType: "harness-whip" },
                 0,
             );
             session.clientId = text(object(initialized.result).clientId);
@@ -119,7 +119,7 @@ class SnapshotSession {
                         type: "response",
                         requestId: message.requestId,
                         resultType: "error",
-                        error: "unsupported-by-codex-whip",
+                        error: "unsupported-by-harness-whip",
                     });
                 }
                 for (const listener of this.listeners) {

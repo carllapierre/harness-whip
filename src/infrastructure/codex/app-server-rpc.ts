@@ -68,7 +68,7 @@ export class AppServerRpc {
         });
         const initialized = object(
             await this.request("initialize", {
-                clientInfo: { name: "codex_whip", title: "Codex Whip", version: "0.1.0" },
+                clientInfo: { name: "harness_whip", title: "Harness Whip", version: "0.1.0" },
                 capabilities: { experimentalApi: true },
             }),
         );
@@ -118,7 +118,7 @@ export class AppServerRpc {
                             error: {
                                 code: -32601,
                                 message:
-                                    "Codex Whip cannot answer approval, input, or tool requests",
+                                    "Harness Whip cannot answer approval, input, or tool requests",
                             },
                         });
                     }

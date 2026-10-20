@@ -1,4 +1,4 @@
-# Codex Whip
+# Harness Whip
 
 - Follow [architecture](docs/architecture.md) and [verification](docs/verification.md).
 - Build one lightweight TypeScript CLI with zero npm runtime dependencies unless

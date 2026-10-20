@@ -1,7 +1,7 @@
 {
-    "name": "codex-whip",
+    "name": "harness-whip",
     "version": "0.1.0",
-    "description": "Pick up where Codex left off. A lightweight quota-recovery CLI.",
+    "description": "Resume agent work after quota resets. Currently supports Codex only.",
     "type": "module",
     "license": "MIT",
     "author": "Carl Lapierre",
@@ -9,6 +9,7 @@
         "node": ">=22.18.0"
     },
     "bin": {
+        "harness-whip": "bin/harness-whip.mjs",
         "codex-whip": "bin/codex-whip.mjs"
     },
     "files": [
@@ -23,7 +24,7 @@
     "scripts": {
         "dev": "npm run build && npm start --",
         "build": "tsc -p tsconfig.build.json",
-        "start": "node bin/codex-whip.mjs",
+        "start": "node bin/harness-whip.mjs",
         "typecheck": "tsc --noEmit",
         "test": "node scripts/test.mjs",
         "lint": "eslint .",

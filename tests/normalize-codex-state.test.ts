@@ -80,23 +80,32 @@ test("execution settings affect fingerprints, titles and token counters do not",
     );
 });
 
-test("continuation correlation is read only from actual user-message items", () => {
+test("continuation correlation recognizes current and legacy markers only in user messages", () => {
     const marker = `${THREAD}:${TURN}`;
-    const turn = {
-        id: "next-turn",
-        status: "inProgress",
-        items: [
-            { type: "agentMessage", text: `[codex-whip:fake]` },
-            {
-                type: "userMessage",
-                content: [{ type: "text", text: `Continue. [codex-whip:${marker}]` }],
-            },
-        ],
-    };
-    assert.equal(
-        normalizeSnapshot(snapshot(), turn, { status: { type: "active" } }, false).continuationId,
-        marker,
-    );
+    for (const name of ["harness-whip", "codex-whip"]) {
+        const turn = {
+            id: "next-turn",
+            status: "inProgress",
+            items: [
+                { type: "agentMessage", text: `[${name}:${marker}]` },
+                {
+                    type: "userMessage",
+                    content: [{ type: "text", text: `Continue. [${name}:${marker}]` }],
+                },
+            ],
+        };
+        assert.equal(
+            normalizeSnapshot(snapshot(), turn, { status: { type: "active" } }, false)
+                .continuationId,
+            marker,
+        );
+        turn.items = [turn.items[0]!];
+        assert.equal(
+            normalizeSnapshot(snapshot(), turn, { status: { type: "active" } }, false)
+                .continuationId,
+            null,
+        );
+    }
 });
 
 test("desktop may omit ephemeral when official metadata confirms a persisted chat", () => {

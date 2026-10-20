@@ -17,7 +17,7 @@ export class SqliteRecoveryStore implements RecoveryStore {
         const version = this.db.prepare("PRAGMA user_version").get()?.user_version;
         if (typeof version === "number" && version > 3) {
             this.db.close();
-            throw new Error("State was created by a newer Codex Whip; upgrade this installation");
+            throw new Error("State was created by a newer Harness Whip; upgrade this installation");
         }
         for (const [index, migration] of [
             "001-recovery.sql",

@@ -117,7 +117,8 @@ export function normalizeSnapshot(
             : "unknown",
         blocked: blockedReason !== null,
         blockedReason,
-        continuationId: /\[codex-whip:([0-9a-f:-]+)\]/i.exec(userText)?.[1] ?? null,
+        continuationId:
+            /\[(?:harness-whip|codex-whip):([0-9a-f:-]+)\]/i.exec(userText)?.[1] ?? null,
         fingerprint: createHash("sha256")
             .update(
                 canonical({

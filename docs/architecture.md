@@ -1,7 +1,9 @@
 # Architecture
 
-Codex Whip is one deployable TypeScript CLI. Directories describe the recovery
-workflow. Production has no npm runtime dependencies; it uses Node's process,
+Harness Whip is one deployable TypeScript CLI. Directories describe the recovery
+workflow. Codex is the only supported subscription today; additional integrations
+are planned. Keep Codex protocol details in its existing adapter until another
+concrete integration needs a new port. Production has no npm runtime dependencies; it uses Node's process,
 stream, socket, SQLite and argument-parsing APIs. Developer tooling stays in
 devDependencies. Distributed JavaScript runs without a TypeScript loader.
 
@@ -109,3 +111,14 @@ so `status` can expose problems even when the recovery ledger is empty.
 Status aggregates the ledger on demand. Introduce pagination, retention or finer
 queries when actual history sizes justify them. The finite app-server child can
 use more memory than Whip itself; zero npm dependencies is not a total-memory claim.
+
+## Rename compatibility
+
+Harness Whip retains the `codex-whip` executable as an alias for existing launchers.
+New recovery messages use `[harness-whip:…]`; correlation also accepts the old
+`[codex-whip:…]` marker in user-message items. The ledger schema is unchanged.
+State resolution honors `--state-dir`, then `HARNESS_WHIP_HOME`, then the legacy
+`CODEX_WHIP_HOME`. Without an override, an existing `~/.codex-whip/whip.sqlite` is
+reused, preserving baselines, dispatch claims, pause/exclusion controls and leases.
+New installations use `~/.harness-whip`. If both default databases exist, require
+an explicit choice instead of silently losing recovery history.

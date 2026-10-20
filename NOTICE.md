@@ -1,6 +1,6 @@
 # Sources and acknowledgements
 
-Codex Whip is an independent implementation. Its design was informed by:
+Harness Whip is an independent implementation. Its design was informed by:
 
 - [progressrdx/codex-auto-resume](https://github.com/progressrdx/codex-auto-resume)
   (MIT): exact-thread selection, conservative recovery, quota-window checks and

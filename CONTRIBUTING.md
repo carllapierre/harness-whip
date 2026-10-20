@@ -1,6 +1,6 @@
 # Contributing
 
-Use Node.js 22.18+ and npm. Run `npm ci`, then `npm run check`. Keep the lockfile
+Use Node.js 22.18+ and npm (`nvm install && nvm use` reads `.nvmrc`). Run `npm ci`, then `npm run check`. Keep the lockfile
 committed. Tests use synthetic data and local temporary SQLite databases.
 
 Read [architecture](docs/architecture.md) before changing boundaries. Use strict

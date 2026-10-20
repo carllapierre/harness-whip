@@ -10,7 +10,7 @@ test("explicit failed conversation is continued exactly once and counted after c
     assert.equal(f.codex.sends.length, 1);
     assert.equal(f.codex.sends[0]?.id, THREAD);
     assert.match(f.codex.sends[0]!.message, /Preserve the original task scope/);
-    assert.ok(f.codex.sends[0]!.message.includes(`[codex-whip:${THREAD}:${TURN}]`));
+    assert.ok(f.codex.sends[0]!.message.includes(`[harness-whip:${THREAD}:${TURN}]`));
     assert.equal(f.store.recoveries()[0]?.status, "confirmed");
     assert.equal(f.events.filter((event) => event.kind === "whip").length, 1);
 });

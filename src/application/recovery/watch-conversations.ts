@@ -245,7 +245,7 @@ export class WatchConversations {
         try {
             const confirmation = await this.codex.continue(
                 thread.id,
-                `${CONTINUATION}\n\n[codex-whip:${recovery.id}]`,
+                `${CONTINUATION}\n\n[harness-whip:${recovery.id}]`,
                 fresh,
             );
             this.store.update(
