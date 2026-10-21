@@ -168,3 +168,9 @@ quota-failed turn can qualify.
 
 Run all controls with the same state directory as the watcher.
 Do not delete uncertain-dispatch records to force another automatic send.
+
+Inspection warnings affecting waiting recoveries appear first in `status`.
+For desktop frame-size errors, the message includes the declared byte count and
+128 MiB transport limit. The whole snapshot is parsed in memory; long histories
+require more transient memory. `doctor --thread UUID` verifies that inspection
+works without sending a continuation.

@@ -19,6 +19,8 @@ Run `npm run check` for types, lint, formatting, behavioral tests and production
 - RPC request correlation, timeouts, disconnects, and refusing approval requests.
 - Fragmented desktop IPC frames, Unicode, unsupported protocol versions, and
   headless adapter dispatch preserving inherited execution settings.
+- Snapshots larger than 32 MiB, coalesced frames and invalid/oversized frame
+  headers, plus status prioritization for blocked waiting recoveries.
 - CLI validation, path boundaries and terminal control-character sanitization.
 
 ## Live verification
@@ -40,6 +42,14 @@ Natural scheduled-reset recovery, full headless execution, macOS recovery
 dispatch, Linux live integration and cloud sandbox lifecycle remain unverified. Early reset polling
 has regression coverage; the live incident verified recovery after restored
 capacity, rather than waiting out a complete exhausted window.
+
+On 2026-10-21, the same long-running chat exposed a transport ceiling: its
+37,555,032-byte snapshot exceeded Whip's old 32 MiB frame limit. The waiting
+recovery remained recorded, but inspection had failed since the previous evening.
+After increasing the bound to 128 MiB and replacing repeated buffer concatenation
+with chunk assembly, read-only inspection of the real chat succeeded. Its latest
+turn was already active following the user's manual continuation; this repair
+did not send another message. Synthetic coverage exercises a 33 MiB snapshot.
 
 The default proxy socket did not connect on the inspected Windows installation.
 Proxy mode requires a deliberately running compatible shared server. Desktop mode

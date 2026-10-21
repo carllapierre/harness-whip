@@ -7,7 +7,13 @@ export function showStatus(store: RecoveryStore, directory: string, json: boolea
     const confirmed = entries.filter((entry) => entry.status === "confirmed");
     const today = new Date(now).toDateString();
     const waiting = entries.filter((entry) => entry.status === "waiting");
-    const issues = store.issues();
+    const waitingThreads = new Set(waiting.map((entry) => entry.threadId));
+    const issues = store
+        .issues()
+        .sort(
+            (first, second) =>
+                Number(waitingThreads.has(second.key)) - Number(waitingThreads.has(first.key)),
+        );
     const attention = new Set([
         ...entries
             .filter((entry) => entry.status === "attention" || entry.status === "dispatching")

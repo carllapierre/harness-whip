@@ -8,12 +8,13 @@ import { DesktopSnapshots } from "../src/infrastructure/codex/desktop-snapshots.
 import { object } from "../src/infrastructure/codex/protocol-values.ts";
 import { THREAD } from "./fixtures/recovery-fixture.ts";
 
-async function serverFixture(version: number) {
+async function serverFixture(version: number, paddingBytes = 0) {
     const endpoint =
         process.platform === "win32"
             ? `\\\\.\\pipe\\harness-whip-test-${randomUUID()}`
             : join(tmpdir(), `whip-${randomUUID()}.sock`);
     const server = createServer((socket) => {
+        socket.on("error", () => {});
         let buffer = Buffer.alloc(0);
         const send = (message: unknown): void => {
             const body = Buffer.from(JSON.stringify(message));
@@ -49,7 +50,11 @@ async function serverFixture(version: number) {
                             conversationId: THREAD,
                             change: {
                                 type: "snapshot",
-                                conversationState: { id: THREAD, title: "Équipement 🧰" },
+                                conversationState: {
+                                    id: THREAD,
+                                    title: "Équipement 🧰",
+                                    historyPayload: "x".repeat(paddingBytes),
+                                },
                             },
                         },
                     });
@@ -87,6 +92,21 @@ test("an unrecognized desktop protocol version prevents inspection", async () =>
             new DesktopSnapshots("/unused", server.endpoint, 1000).read(THREAD),
             /version changed/,
         );
+    } finally {
+        await server.close();
+    }
+});
+
+test("long conversation snapshots larger than 32 MiB remain inspectable", async () => {
+    const paddingBytes = 33 * 1024 * 1024;
+    const server = await serverFixture(11, paddingBytes);
+    try {
+        const snapshot = await new DesktopSnapshots("/unused", server.endpoint, 30_000).read(
+            THREAD,
+        );
+        assert.equal(snapshot.id, THREAD);
+        assert.equal(snapshot.title, "Équipement 🧰");
+        assert.equal((snapshot.historyPayload as string).length, paddingBytes);
     } finally {
         await server.close();
     }

@@ -2,13 +2,14 @@ import { connect, type Socket } from "node:net";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { object, text, type ObjectValue } from "./protocol-values.ts";
+import { DesktopFrameDecoder } from "./desktop-frame-decoder.ts";
 
 // Experimental desktop IPC: read-only snapshots. Sending uses the official queue CLI.
 export class DesktopSnapshots {
     constructor(
         private home: string,
         private endpoint?: string,
-        private timeoutMs = 8_000,
+        private timeoutMs = 30_000,
     ) {}
 
     async read(threadId: string): Promise<ObjectValue> {
@@ -57,7 +58,7 @@ export class DesktopSnapshots {
 
 class SnapshotSession {
     clientId = "initializing-client";
-    private buffer = Buffer.alloc(0);
+    private frames = new DesktopFrameDecoder();
     private listeners = new Set<(message: ObjectValue) => void>();
     private rejects = new Set<(error: Error) => void>();
     private connection: Promise<void>;
@@ -93,21 +94,15 @@ class SnapshotSession {
     }
 
     private receive(chunk: Buffer): void {
-        this.buffer = Buffer.concat([this.buffer, chunk]);
-        while (this.buffer.length >= 4) {
-            const size = this.buffer.readUInt32LE(0);
-            if (size === 0 || size > 32 * 1024 * 1024) {
-                this.fail(new Error("Unsupported desktop frame size"));
-                this.socket.destroy();
-                return;
-            }
-            if (this.buffer.length < size + 4) {
-                return;
-            }
-            const data = this.buffer.subarray(4, size + 4).toString("utf8");
-            this.buffer = this.buffer.subarray(size + 4);
-            try {
-                const message = object(JSON.parse(data));
+        try {
+            this.frames.receive(chunk, (data) => {
+                let decoded: unknown;
+                try {
+                    decoded = JSON.parse(data);
+                } catch {
+                    throw new Error("Desktop sent invalid JSON");
+                }
+                const message = object(decoded);
                 if (message.type === "client-discovery-request") {
                     this.send({
                         type: "client-discovery-response",
@@ -125,9 +120,10 @@ class SnapshotSession {
                 for (const listener of this.listeners) {
                     listener(message);
                 }
-            } catch {
-                this.fail(new Error("Desktop sent invalid JSON"));
-            }
+            });
+        } catch (error) {
+            this.fail(error instanceof Error ? error : new Error("Unsupported desktop frame"));
+            this.socket.destroy();
         }
     }
 
@@ -156,7 +152,11 @@ class SnapshotSession {
             };
             const timer = setTimeout(
                 () =>
-                    finish(new Error("Desktop snapshot timed out; conversation may not be loaded")),
+                    finish(
+                        new Error(
+                            "Desktop query timed out; conversation may be unloaded or snapshot transfer too slow",
+                        ),
+                    ),
                 this.timeoutMs,
             );
             this.listeners.add(listener);

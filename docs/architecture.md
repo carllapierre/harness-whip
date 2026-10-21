@@ -82,6 +82,12 @@ those reads with live version-11 IPC snapshots, then uses the official queue CLI
 It verifies a unique recovery marker in the new turn's user message before counting
 a whip. Internal desktop IPC remains experimental and isolated to one adapter.
 
+Desktop frames are length-prefixed UTF-8 JSON. A chunk decoder assembles each
+frame once instead of copying all accumulated bytes on every socket read. Frames
+are bounded at 128 MiB; invalid sizes report both the declared size and limit.
+Queries allow 30 seconds for large snapshots. Full history is still parsed in
+memory, so unusually long chats can use substantially more transient memory.
+
 Proxy mode uses an existing server's runtime state. Stdio mode owns its child server
 and resumes headless sessions only when dispatch is due. Neither mode changes
 authentication, model, sandbox or approval configuration. Approval/input/tool RPC
@@ -98,6 +104,7 @@ The official metadata confirms whether a chat is ephemeral; desktop IPC may omit
 that optional flag. Explicit conflicting flags still block recovery. Failed
 inspections and blocked quota failures persist separately from recovery records,
 so `status` can expose problems even when the recovery ledger is empty.
+Issues affecting waiting recoveries appear before unrelated inspection warnings.
 
 ## Deliberate limits
 
