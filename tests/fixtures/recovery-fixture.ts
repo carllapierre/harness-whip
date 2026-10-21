@@ -9,6 +9,7 @@ import type {
     Conversation,
     QuotaSnapshot,
     ThreadSnapshot,
+    TurnObservation,
 } from "../../src/domain/recovery/recovery-model.ts";
 
 export const THREAD = "019a0000-0000-7000-8000-000000000001";
@@ -41,6 +42,7 @@ export class FakeCodex implements CodexConnection {
     sends: { id: string; message: string }[] = [];
     failDelivery = false;
     inspectCount = 0;
+    observeCount = 0;
     onInspect?: () => void;
     quotaState: QuotaSnapshot = {
         bucket: "codex",
@@ -55,6 +57,10 @@ export class FakeCodex implements CodexConnection {
     async inspect(): Promise<ThreadSnapshot> {
         this.inspectCount++;
         this.onInspect?.();
+        return { ...this.state };
+    }
+    async observe(): Promise<TurnObservation> {
+        this.observeCount++;
         return { ...this.state };
     }
     async quota(): Promise<QuotaSnapshot> {

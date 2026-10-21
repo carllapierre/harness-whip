@@ -4,6 +4,7 @@ import type {
     QuotaSnapshot,
     ThreadSnapshot,
     TurnStatus,
+    TurnObservation,
 } from "../../domain/recovery/recovery-model.ts";
 import { array, canonical, numeric, object, text } from "./protocol-values.ts";
 
@@ -40,16 +41,12 @@ export function latestDesktopTurn(value: unknown): Record<string, unknown> {
     throw new Error("Desktop history format is unsupported");
 }
 
-export function normalizeSnapshot(
+export function normalizeObservation(
     meta: Conversation,
     turnValue: unknown,
-    stateValue: unknown,
-    desktop: boolean,
-): ThreadSnapshot {
+    desktop = false,
+): TurnObservation {
     const turn = object(turnValue);
-    const state = object(stateValue);
-    const runtime = text(object(desktop ? state.threadRuntimeStatus : state.status).type);
-    const goal = object(state.threadGoal);
     const turnStatus = ["inProgress", "completed", "interrupted", "failed"].includes(
         text(turn.status),
     )
@@ -61,6 +58,33 @@ export function normalizeSnapshot(
         .flatMap((item) => array(object(item).content))
         .map((part) => text(object(part).text))
         .join("\n");
+    return {
+        ...meta,
+        turnId: text(turn.id, text(turn.turnId)),
+        turnStartedAt: desktop
+            ? typeof turn.turnStartedAtMs === "number"
+                ? turn.turnStartedAtMs
+                : null
+            : typeof turn.startedAt === "number"
+              ? turn.startedAt * 1000
+              : null,
+        turnStatus,
+        quotaFailure: errorInfo === "usageLimitExceeded" || errorInfo === "UsageLimitExceeded",
+        continuationId:
+            /\[(?:harness-whip|codex-whip):([0-9a-f:-]+)\]/i.exec(userText)?.[1] ?? null,
+    };
+}
+
+export function normalizeSnapshot(
+    meta: Conversation,
+    turnValue: unknown,
+    stateValue: unknown,
+    desktop: boolean,
+): ThreadSnapshot {
+    const turn = object(turnValue);
+    const state = object(stateValue);
+    const runtime = text(object(desktop ? state.threadRuntimeStatus : state.status).type);
+    const goal = object(state.threadGoal);
     // thread/read is authoritative for persistence. Desktop IPC may omit the
     // optional ephemeral field; an explicit conflicting or unknown value still blocks.
     const blockers = desktop
@@ -101,24 +125,12 @@ export function normalizeSnapshot(
               goal: state.threadGoal,
           };
     return {
-        ...meta,
-        turnId: text(turn.id, text(turn.turnId)),
-        turnStartedAt: desktop
-            ? typeof turn.turnStartedAtMs === "number"
-                ? turn.turnStartedAtMs
-                : null
-            : typeof turn.startedAt === "number"
-              ? turn.startedAt * 1000
-              : null,
-        turnStatus,
-        quotaFailure: errorInfo === "usageLimitExceeded" || errorInfo === "UsageLimitExceeded",
+        ...normalizeObservation(meta, turnValue, desktop),
         runtime: ["active", "idle", "systemError", "notLoaded"].includes(runtime)
             ? (runtime as ThreadSnapshot["runtime"])
             : "unknown",
         blocked: blockedReason !== null,
         blockedReason,
-        continuationId:
-            /\[(?:harness-whip|codex-whip):([0-9a-f:-]+)\]/i.exec(userText)?.[1] ?? null,
         fingerprint: createHash("sha256")
             .update(
                 canonical({

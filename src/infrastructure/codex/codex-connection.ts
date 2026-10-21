@@ -5,6 +5,7 @@ import type {
     Conversation,
     QuotaSnapshot,
     ThreadSnapshot,
+    TurnObservation,
 } from "../../domain/recovery/recovery-model.ts";
 import { unchanged } from "../../domain/recovery/recovery-policy.ts";
 import { AppServerRpc } from "./app-server-rpc.ts";
@@ -14,6 +15,7 @@ import {
     latestDesktopTurn,
     normalizeQuota,
     normalizeSnapshot,
+    normalizeObservation,
 } from "./normalize-codex-state.ts";
 import { object, text, uuid } from "./protocol-values.ts";
 
@@ -24,12 +26,14 @@ export class NativeCodexConnection implements CodexConnection {
     private rpc: AppServerRpc;
     private desktop: DesktopSnapshots;
     private queueChecked = false;
+    private observations = new Map<string, { value: TurnObservation; readAt: number }>();
 
     constructor(
         private binary: string,
         private home: string,
         private mode: ConnectionMode,
         socket?: string,
+        private now: () => number = Date.now,
     ) {
         this.rpc = new AppServerRpc(
             binary,
@@ -72,7 +76,47 @@ export class NativeCodexConnection implements CodexConnection {
                 visited.add(cursor);
             }
         } while (cursor);
+        const current = new Set(result.map((thread) => thread.id));
+        for (const id of this.observations.keys()) {
+            if (!current.has(id)) {
+                this.observations.delete(id);
+            }
+        }
         return result;
+    }
+
+    private async latestTurn(
+        threadId: string,
+        itemsView: "notLoaded" | "summary" = "summary",
+    ): Promise<unknown> {
+        const turns = object(
+            await this.rpc.call("thread/turns/list", {
+                threadId,
+                limit: 1,
+                sortDirection: "desc",
+                itemsView,
+            }),
+        );
+        if (!Array.isArray(turns.data)) {
+            throw new Error("Codex turn history has an unsupported format");
+        }
+        return turns.data[0];
+    }
+
+    async observe(thread: Conversation): Promise<TurnObservation> {
+        uuid(thread.id);
+        const cached = this.observations.get(thread.id);
+        if (
+            cached &&
+            cached.value.updatedAt === thread.updatedAt &&
+            cached.value.project === thread.project &&
+            this.now() - cached.readAt < 30_000
+        ) {
+            return { ...cached.value, ...thread };
+        }
+        const value = normalizeObservation(thread, await this.latestTurn(thread.id, "notLoaded"));
+        this.observations.set(thread.id, { value, readAt: this.now() });
+        return value;
     }
 
     async inspect(threadId: string): Promise<ThreadSnapshot> {
@@ -95,17 +139,7 @@ export class NativeCodexConnection implements CodexConnection {
             }
             return normalizeSnapshot(meta, latestDesktopTurn(state), state, true);
         }
-        const turns = object(
-            await this.rpc.call("thread/turns/list", {
-                threadId,
-                limit: 1,
-                sortDirection: "desc",
-                itemsView: "summary",
-            }),
-        );
-        if (!Array.isArray(turns.data)) {
-            throw new Error("Codex turn history has an unsupported format");
-        }
+        const turn = await this.latestTurn(threadId);
         const goal = object(await this.rpc.call("thread/goal/get", { threadId }));
         thread.threadGoal = goal.goal;
         thread.blocked =
@@ -117,7 +151,7 @@ export class NativeCodexConnection implements CodexConnection {
         if (this.mode === "stdio" && object(thread.status).type === "notLoaded") {
             thread.status = { type: "idle" };
         }
-        return normalizeSnapshot(meta, turns.data[0], thread, false);
+        return normalizeSnapshot(meta, turn, thread, false);
     }
 
     async quota(bucket?: string): Promise<QuotaSnapshot> {
@@ -165,7 +199,9 @@ export class NativeCodexConnection implements CodexConnection {
             // A queue receipt is acceptance, not proof that the turn started.
             for (let attempt = 0; attempt < 10; attempt++) {
                 await new Promise((resolve) => setTimeout(resolve, 500));
-                const next = await this.inspect(threadId);
+                // Persisted summary items prove the exact marker without serializing
+                // the desktop's entire conversation again on every confirmation poll.
+                const next = normalizeObservation(fresh, await this.latestTurn(threadId));
                 if (
                     next.turnId &&
                     next.turnId !== expected.turnId &&

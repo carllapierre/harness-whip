@@ -58,6 +58,8 @@ Only confirmed quota failures qualify. Whip rechecks capacity and conversation
 state before sending, preserves execution settings, and prevents duplicate sends.
 Completed work, manual stops, approvals and queued user messages are left alone.
 Uncertain delivery needs manual inspection. There is no per-conversation whip cap.
+Routine monitoring uses turn metadata; full desktop snapshots are reserved
+for recovery validation.
 
 Experimental: Windows desktop recovery after a manual account reset is verified.
 macOS compatibility checks and their limits are recorded in

@@ -1,7 +1,11 @@
 import type { CodexConnection } from "../ports/codex-connection.ts";
 import type { RecoveryStore } from "../ports/recovery-store.ts";
 import type { Clock, EventSink } from "../ports/runtime.ts";
-import type { Conversation, Recovery, WatchScope } from "../../domain/recovery/recovery-model.ts";
+import type {
+    Conversation,
+    ThreadSnapshot,
+    WatchScope,
+} from "../../domain/recovery/recovery-model.ts";
 import { CONTINUATION } from "../../domain/recovery/recovery-model.ts";
 import { eligible, quotaDecision, unchanged } from "../../domain/recovery/recovery-policy.ts";
 
@@ -17,6 +21,7 @@ export interface WatchOptions {
 export class WatchConversations {
     private nextDispatch = 0;
     private startedAt: number;
+    private nextInspection = new Map<string, { turnId: string; at: number }>();
 
     constructor(
         private codex: CodexConnection,
@@ -105,50 +110,63 @@ export class WatchConversations {
         this.reportError("connection", error);
     }
 
-    private async observe(thread: Conversation): Promise<void> {
-        const snapshot = await this.codex.inspect(thread.id);
+    private async inspectFailure(threadId: string, turnId: string): Promise<ThreadSnapshot | null> {
+        const snapshot = await this.codex.inspect(threadId);
         if (snapshot.turnStatus === "failed" && snapshot.quotaFailure && !eligible(snapshot)) {
             this.reportError(
-                thread.id,
+                threadId,
                 new Error(
                     snapshot.blockedReason ??
                         `Usage-limit failure is not resumable: runtime=${snapshot.runtime}, turn=${snapshot.turnId || "unavailable"}`,
                 ),
             );
         } else {
-            this.store.clearIssue(thread.id);
+            this.store.clearIssue(threadId);
         }
+        return eligible(snapshot) && snapshot.turnId === turnId && this.selected(snapshot)
+            ? snapshot
+            : null;
+    }
+
+    private async observe(thread: Conversation): Promise<void> {
+        const observation = await this.codex.observe(thread);
         const now = this.clock.now();
         const seen = this.store.seen(thread.id);
         const existing = this.store
             .recoveries()
             .find(
-                (entry) => entry.threadId === thread.id && entry.failedTurnId === snapshot.turnId,
+                (entry) =>
+                    entry.threadId === thread.id && entry.failedTurnId === observation.turnId,
             );
         if (seen === null) {
             const newFailure =
-                snapshot.turnStatus === "failed" &&
-                snapshot.turnStartedAt !== null &&
-                snapshot.turnStartedAt >= this.startedAt;
+                observation.turnStatus === "failed" &&
+                observation.turnStartedAt !== null &&
+                observation.turnStartedAt >= this.startedAt;
             this.store.markSeen(
                 thread.id,
-                snapshot.turnStatus === "failed" && !newFailure
-                    ? `baseline:${snapshot.turnId}`
-                    : snapshot.turnId,
+                observation.turnStatus === "failed" && !newFailure
+                    ? `baseline:${observation.turnId}`
+                    : observation.turnId,
             );
             // Explicit UUID selection may enroll an already failed conversation.
             // Broad scopes establish a baseline instead of resurrecting old failures.
             if (!this.options.scope.threads.includes(thread.id) && !newFailure) {
+                this.store.clearIssue(thread.id);
                 return;
             }
         }
-        if (snapshot.turnId && seen !== `baseline:${snapshot.turnId}`) {
-            this.store.markSeen(thread.id, snapshot.turnId);
+        if (observation.turnId && seen !== `baseline:${observation.turnId}`) {
+            this.store.markSeen(thread.id, observation.turnId);
         }
         for (const entry of this.store
             .recoveries()
             .filter((item) => item.threadId === thread.id && item.status === "waiting")) {
-            if (!unchanged(snapshot, entry.failedTurnId, entry.fingerprint)) {
+            if (
+                observation.turnId !== entry.failedTurnId ||
+                observation.turnStatus !== "failed" ||
+                !observation.quotaFailure
+            ) {
                 this.store.update(
                     entry.id,
                     "canceled",
@@ -163,34 +181,52 @@ export class WatchConversations {
                 );
             }
         }
-        if (!eligible(snapshot)) {
+        if (
+            observation.turnStatus !== "failed" ||
+            !observation.quotaFailure ||
+            !observation.turnId
+        ) {
+            this.store.clearIssue(thread.id);
+            this.nextInspection.delete(thread.id);
             return;
         }
         if (existing && existing.status !== "waiting") {
+            this.store.clearIssue(thread.id);
             return;
         }
         if (
             !existing &&
-            seen === `baseline:${snapshot.turnId}` &&
+            seen === `baseline:${observation.turnId}` &&
             !this.options.scope.threads.includes(thread.id)
         ) {
+            this.store.clearIssue(thread.id);
             return;
         }
-        const recovery: Recovery = existing ?? {
-            id: `${thread.id}:${snapshot.turnId}`,
-            threadId: thread.id,
-            failedTurnId: snapshot.turnId,
-            project: thread.project,
-            title: thread.title,
-            fingerprint: snapshot.fingerprint,
-            status: "waiting",
-            dueAt: now,
-            createdAt: now,
-            updatedAt: now,
-            reason: "Confirmed usage-limit failure",
-            confirmation: null,
-        };
-        if (!existing) {
+        let recovery = existing;
+        if (!recovery) {
+            const next = this.nextInspection.get(thread.id);
+            if (next?.turnId === observation.turnId && next.at > now) {
+                return;
+            }
+            this.nextInspection.set(thread.id, { turnId: observation.turnId, at: now + 30_000 });
+            const snapshot = await this.inspectFailure(thread.id, observation.turnId);
+            if (!snapshot) {
+                return;
+            }
+            recovery = {
+                id: `${thread.id}:${snapshot.turnId}`,
+                threadId: thread.id,
+                failedTurnId: snapshot.turnId,
+                project: snapshot.project,
+                title: snapshot.title,
+                fingerprint: snapshot.fingerprint,
+                status: "waiting",
+                dueAt: now,
+                createdAt: now,
+                updatedAt: now,
+                reason: "Confirmed usage-limit failure",
+                confirmation: null,
+            };
             if (!this.store.add(recovery)) {
                 return;
             }
@@ -215,8 +251,8 @@ export class WatchConversations {
             );
             return;
         }
-        const fresh = await this.codex.inspect(thread.id);
-        if (!unchanged(fresh, recovery.failedTurnId, recovery.fingerprint)) {
+        const fresh = await this.inspectFailure(thread.id, recovery.failedTurnId);
+        if (!fresh || !unchanged(fresh, recovery.failedTurnId, recovery.fingerprint)) {
             this.store.update(recovery.id, "canceled", "Conversation changed during recheck", now);
             return;
         }

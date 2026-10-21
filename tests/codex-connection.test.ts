@@ -1,10 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { NativeCodexConnection } from "../src/infrastructure/codex/codex-connection.ts";
+import {
+    NativeCodexConnection,
+    type ConnectionMode,
+} from "../src/infrastructure/codex/codex-connection.ts";
 import { THREAD, TURN } from "./fixtures/recovery-fixture.ts";
 import { object } from "../src/infrastructure/codex/protocol-values.ts";
 
-function adapterFixture() {
+function adapterFixture(mode: ConnectionMode = "stdio") {
+    let now = 1_000_000;
     const calls: { method: string; params: Record<string, unknown> }[] = [];
     const thread = {
         id: THREAD,
@@ -19,6 +23,7 @@ function adapterFixture() {
     };
     let queued = false;
     let listed = true;
+    const latest = { id: TURN, status: "failed", error: { codexErrorInfo: "usageLimitExceeded" } };
     const rpc = {
         async call(method: string, parameters: unknown) {
             const params = object(parameters);
@@ -37,13 +42,7 @@ function adapterFixture() {
             }
             if (method === "thread/turns/list") {
                 return {
-                    data: [
-                        {
-                            id: TURN,
-                            status: "failed",
-                            error: { codexErrorInfo: "usageLimitExceeded" },
-                        },
-                    ],
+                    data: [{ ...latest }],
                 };
             }
             if (method === "thread/resume") {
@@ -60,12 +59,22 @@ function adapterFixture() {
         },
         async close() {},
     };
-    const adapter = new NativeCodexConnection("unused", "/example-codex-home", "stdio");
+    const adapter = new NativeCodexConnection(
+        "unused",
+        "/example-codex-home",
+        mode,
+        undefined,
+        () => now,
+    );
     Object.assign(adapter, { rpc });
     return {
         adapter,
         calls,
         thread,
+        latest,
+        advanceTime: (milliseconds: number) => {
+            now += milliseconds;
+        },
         setQueued: () => {
             queued = true;
         },
@@ -74,6 +83,42 @@ function adapterFixture() {
         },
     };
 }
+
+test("desktop monitoring uses cached summaries with an updatedAt check and a bounded refresh", async () => {
+    const f = adapterFixture("desktop");
+    Object.assign(f.adapter, {
+        desktop: {
+            read() {
+                assert.fail("Monitoring must not request desktop history");
+            },
+        },
+    });
+    let [thread] = await f.adapter.listConversations();
+    const observed = await f.adapter.observe(thread!);
+    assert.equal(
+        f.calls.find((call) => call.method === "thread/turns/list")?.params.itemsView,
+        "notLoaded",
+    );
+    assert.equal(observed.quotaFailure, true);
+    assert.equal("fingerprint" in observed, false);
+    await f.adapter.observe(thread!);
+    assert.equal(f.calls.filter((call) => call.method === "thread/turns/list").length, 1);
+    f.thread.updatedAt++;
+    f.latest.status = "inProgress";
+    [thread] = await f.adapter.listConversations();
+    assert.equal((await f.adapter.observe(thread!)).turnStatus, "inProgress");
+    assert.equal(f.calls.filter((call) => call.method === "thread/turns/list").length, 2);
+    f.advanceTime(30_000);
+    f.latest.status = "failed";
+    assert.equal((await f.adapter.observe(thread!)).turnStatus, "failed");
+    assert.equal(f.calls.filter((call) => call.method === "thread/turns/list").length, 3);
+    assert.equal(
+        f.calls.some(
+            (call) => call.method === "thread/read" || call.method === "thread/queue/list",
+        ),
+        false,
+    );
+});
 
 test("headless continuation resumes the exact UUID and inherits execution settings", async () => {
     const f = adapterFixture();

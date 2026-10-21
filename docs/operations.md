@@ -89,7 +89,14 @@ issue reasons and timestamps. Successful inspection clears a resolved issue.
 Waiting recoveries reread quota every 30 seconds, so a manual reset can release
 them before the original reset timestamp. Whip does not redeem account resets.
 
-Desktop mode uses experimental live IPC snapshots and the installed runtime's
+Routine monitoring reads turn metadata without message/tool items and caches unchanged results for
+at most 30 seconds. Full desktop history is requested when validating a quota
+failure and before a recovery send, rather than on every watch cycle. A blocked
+initial inspection is retried after 30 seconds. Setting/permission changes are
+rechecked before dispatch; manual continuations and interruptions cancel from
+the summaries. `doctor --thread` deliberately exercises full inspection.
+
+Desktop recovery uses experimental live IPC snapshots and the installed runtime's
 official queue command. `proxy` attaches to an existing shared app-server with
 `--socket PATH`. `stdio` owns a child server for headless work. It cannot answer
 approval requests, user questions or client-provided tool requests.
@@ -127,18 +134,18 @@ run a second service with a different state directory for the same conversations
 
 ## Windows Task Scheduler
 
-The previously verified Windows setup used a per-user task **Codex Whip**,
-starting 30 seconds after Windows sign-in and restarting after failure with a
-three-minute delay. Its hidden launcher and machine-specific paths live in
-`~/.codex-whip/start-watcher.ps1` and `~/.codex-whip/startup.json`.
-The rename keeps `bin/codex-whip.mjs` as a compatibility entry point; it does not
-rename or reconfigure an existing scheduled task.
-It runs desktop mode with `watch --all --interval 5 --json`.
+The Windows development installation was explicitly migrated to a per-user task
+**Harness Whip**, starting 30 seconds after Windows sign-in and restarting after
+failure with a three-minute delay. Its hidden launcher, logs and preserved ledger
+live under `~/.harness-whip/`. It runs desktop mode with
+`watch --all --interval 30 --json` and an explicit state directory.
+The old task was retired after the new watcher was verified. The global
+`harness-whip` command and legacy `codex-whip` alias address the same database.
 
-Use `harness-whip status` to check it. Logs for that setup are under `~/.codex-whip/logs/`;
+Use `harness-whip status` to check it. Logs for that setup are under `~/.harness-whip/logs/`;
 `current-run.json` names the active process and log files. `harness-whip pause`
 blocks future sends without removing the task. To disable sign-in startup, use
-Task Scheduler or `Disable-ScheduledTask -TaskName 'Codex Whip'` in PowerShell.
+Task Scheduler or `Disable-ScheduledTask -TaskName 'Harness Whip'` in PowerShell.
 This local setup does not install a startup task for other people who clone the repo.
 
 Create a task running as your current user, while logged on for desktop mode.

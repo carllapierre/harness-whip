@@ -22,6 +22,8 @@ Run `npm run check` for types, lint, formatting, behavioral tests and production
 - Snapshots larger than 32 MiB, coalesced frames and invalid/oversized frame
   headers, plus status prioritization for blocked waiting recoveries.
 - CLI validation, path boundaries and terminal control-character sanitization.
+- Summary-only ordinary monitoring, bounded cache refresh, no repeated desktop
+  snapshots while quota is exhausted, and live rechecks after lightweight signals.
 
 ## Live verification
 
@@ -50,6 +52,29 @@ After increasing the bound to 128 MiB and replacing repeated buffer concatenatio
 with chunk assembly, read-only inspection of the real chat succeeded. Its latest
 turn was already active following the user's manual continuation; this repair
 did not send another message. Synthetic coverage exercises a 33 MiB snapshot.
+
+Later on 2026-10-21, live measurement showed that repeatedly requesting desktop
+history was unnecessary for monitoring. The watcher Node process sampled at
+271.4 MiB working set. Monitoring now reads only newest-turn metadata with
+`itemsView: notLoaded`, caches unchanged results for at most 30 seconds, and uses
+desktop snapshots for initial failure validation and final recovery checks.
+An existing confirmed continuation's marker was successfully read through the
+uncached official summary path used for delivery confirmation.
+
+A read-only scan of 71 root chats transferred 155,782 bytes across the listing
+and turn metadata responses, with zero desktop snapshot calls. The following
+scan reused cached observations except for one updated chat. The probe Node
+process sampled at 36.5–37.0 MiB; the migrated watcher sampled at 36.4 MiB, with
+its separate Codex helper at 77.6 MiB. These are point-in-time samples, not a
+controlled benchmark or proof that all desktop lag was caused by Whip.
+
+The Windows installation was migrated to the **Harness Whip** sign-in task and
+`~/.harness-whip/`. A paused-watcher database backup and pre/post-move checksums
+verified all 11 recovery records, including eight confirmed continuations,
+baselines, exclusions and settings. Existing logs were preserved. The new global
+command and legacy alias resolved to the same migrated database; the old task
+was removed after the new watcher was verified running. No new continuation
+was submitted during the monitoring/migration verification.
 
 The default proxy socket did not connect on the inspected Windows installation.
 Proxy mode requires a deliberately running compatible shared server. Desktop mode

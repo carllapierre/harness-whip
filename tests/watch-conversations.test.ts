@@ -22,6 +22,19 @@ test("broad scopes baseline historical failures across repeated checks", async (
     await f.watcher.tick();
     assert.equal(f.codex.sends.length, 0);
     assert.equal(f.store.recoveries().length, 0);
+    assert.equal(f.codex.inspectCount, 0);
+});
+
+test("a lightweight failure signal cannot bypass a newer live turn", async (t) => {
+    const f = fixture();
+    t.after(() => f.store.close());
+    f.codex.onInspect = () => {
+        f.codex.state.turnId = "manual-continuation";
+        f.codex.state.turnStatus = "inProgress";
+    };
+    await f.watcher.tick();
+    assert.equal(f.store.recoveries().length, 0);
+    assert.equal(f.codex.sends.length, 0);
 });
 
 test("a newly started turn can hit quota before its first broad-scope observation", async (t) => {
@@ -68,7 +81,7 @@ test("capacity is reread after reset and a moved reset is persisted", async (t) 
 
 test("manual continuation or settings changes cancel pending recovery", async (t) => {
     for (const change of [
-        { turnId: "new-user-turn" },
+        { turnId: "new-user-turn", turnStatus: "inProgress" as const, quotaFailure: false },
         { fingerprint: "changed-permissions" },
         { blocked: true },
         { turnStatus: "interrupted" as const },
@@ -78,6 +91,9 @@ test("manual continuation or settings changes cancel pending recovery", async (t
         f.codex.quotaState.allowed = false;
         await f.watcher.tick();
         Object.assign(f.codex.state, change);
+        f.clock.value += 30_000;
+        f.codex.quotaState.observedAt = f.clock.value;
+        f.codex.quotaState.allowed = true;
         await f.watcher.tick();
         assert.equal(f.store.recoveries()[0]?.status, "canceled");
         assert.equal(f.codex.sends.length, 0);
@@ -111,9 +127,60 @@ test("blocked quota failures are visible and inspection issues clear after recov
     assert.equal(f.events.filter((event) => event.kind === "attention").length, 1);
     f.codex.state.blocked = false;
     f.codex.state.blockedReason = null;
+    f.clock.value += 30_000;
     await f.watcher.tick();
     assert.equal(f.codex.sends.length, 1);
     assert.equal(f.store.issues().length, 0);
+});
+
+test("ordinary monitoring never requests full snapshots for running, completed or interrupted turns", async (t) => {
+    const f = fixture();
+    t.after(() => f.store.close());
+    for (const turnStatus of ["inProgress", "completed", "interrupted"] as const) {
+        f.codex.state.turnStatus = turnStatus;
+        for (let index = 0; index < 4; index++) {
+            await f.watcher.tick();
+        }
+    }
+    assert.equal(f.codex.observeCount, 12);
+    assert.equal(f.codex.inspectCount, 0);
+    assert.equal(f.codex.sends.length, 0);
+});
+
+test("exhausted quota is polled without repeatedly serializing desktop snapshots", async (t) => {
+    const f = fixture();
+    t.after(() => f.store.close());
+    f.codex.quotaState.allowed = false;
+    await f.watcher.tick();
+    assert.equal(f.codex.inspectCount, 1);
+    for (let index = 0; index < 12; index++) {
+        f.clock.value += 5000;
+        f.codex.quotaState.observedAt = f.clock.value;
+        await f.watcher.tick();
+    }
+    assert.equal(f.codex.inspectCount, 1);
+    f.clock.value += 30_000;
+    f.codex.quotaState.observedAt = f.clock.value;
+    f.codex.quotaState.allowed = true;
+    await f.watcher.tick();
+    assert.equal(f.codex.inspectCount, 2);
+    assert.equal(f.codex.sends.length, 1);
+});
+
+test("blocked failures back off detailed inspection while monitoring continues", async (t) => {
+    const f = fixture();
+    t.after(() => f.store.close());
+    f.codex.state.blocked = true;
+    await f.watcher.tick();
+    for (let index = 0; index < 5; index++) {
+        f.clock.value += 5000;
+        await f.watcher.tick();
+    }
+    assert.equal(f.codex.inspectCount, 1);
+    f.clock.value += 5000;
+    await f.watcher.tick();
+    assert.equal(f.codex.inspectCount, 2);
+    assert.equal(f.codex.sends.length, 0);
 });
 
 test("failed inspections persist as issues even when no recovery exists", async (t) => {

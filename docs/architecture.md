@@ -77,10 +77,23 @@ that case from an old failure; missing timestamps keep the conservative baseline
 
 ## Codex boundary
 
-The official app-server discovers threads and reads quota. Desktop mode combines
-those reads with live version-11 IPC snapshots, then uses the official queue CLI.
-It verifies a unique recovery marker in the new turn's user message before counting
-a whip. Internal desktop IPC remains experimental and isolated to one adapter.
+The official app-server discovers threads and reads quota. Routine observation
+reads only the newest turn metadata with `itemsView: notLoaded`, omitting message
+and tool items and caching unchanged metadata
+for at most 30 seconds. Updated timestamps invalidate that cache; expiry also
+catches changes sharing the same timestamp. Observations contain no permissions
+fingerprint and cannot authorize a send.
+
+Desktop mode requests a live version-11 IPC snapshot when enrolling a quota
+failure and again after capacity returns, before dispatch. Waiting quota polls
+and normal running/completed turns do not request desktop history. Blocked or
+unavailable initial snapshots back off for 30 seconds. Execution-setting changes
+are checked against the original fingerprint during the final live inspection;
+new turns and interruptions cancel from the summary observation.
+
+The official queue CLI sends the continuation. Its new-turn correlation marker
+is checked through uncached official turn summaries. Internal desktop IPC remains
+experimental and isolated to one adapter.
 
 Desktop frames are length-prefixed UTF-8 JSON. A chunk decoder assembles each
 frame once instead of copying all accumulated bytes on every socket read. Frames

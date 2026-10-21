@@ -9,16 +9,19 @@ export interface Conversation {
     parentId: string | null;
 }
 
-export interface ThreadSnapshot extends Conversation {
+export interface TurnObservation extends Conversation {
     turnId: string;
     turnStartedAt: number | null;
     turnStatus: TurnStatus;
     quotaFailure: boolean;
+    continuationId: string | null;
+}
+
+export interface ThreadSnapshot extends TurnObservation {
     runtime: "active" | "idle" | "systemError" | "notLoaded" | "unknown";
     blocked: boolean;
     blockedReason: string | null;
     fingerprint: string;
-    continuationId: string | null;
 }
 
 export interface UsageWindow {
