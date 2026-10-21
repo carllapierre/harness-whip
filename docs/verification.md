@@ -24,6 +24,9 @@ Run `npm run check` for types, lint, formatting, behavioral tests and production
 - CLI validation, path boundaries and terminal control-character sanitization.
 - Summary-only ordinary monitoring, bounded cache refresh, no repeated desktop
   snapshots while quota is exhausted, and live rechecks after lightweight signals.
+- Database-only discovery with periodic reconciliation, retention/removal of
+  rollout-only chats, pagination, compatibility fallback, and uncached archival
+  verification before dispatch. Cold metadata caching still invalidates on changes.
 
 ## Live verification
 
@@ -75,6 +78,17 @@ baselines, exclusions and settings. Existing logs were preserved. The new global
 command and legacy alias resolved to the same migrated database; the old task
 was removed after the new watcher was verified running. No new continuation
 was submitted during the monitoring/migration verification.
+
+The next discovery optimization was checked with a real 30-second interval.
+Startup performed database discovery plus a full reconciliation and turn metadata
+reads: 71 chats, 3,367 ms, and 276,428 response bytes. The following scan used one
+database listing and 16 turn metadata reads: 55 ms and 128,528 bytes, with the exact
+same 71 chat IDs and no full scan or desktop snapshot. The rollout-only chat was
+retained. These samples include caching and are not a controlled benchmark.
+Five-minute reconciliation/removal, complete pagination, unsupported-option
+fallback and archival rejection before dispatch have behavioral tests. This
+discovery optimization was verified live on Windows; its macOS path was not
+retested live during this change.
 
 The default proxy socket did not connect on the inspected Windows installation.
 Proxy mode requires a deliberately running compatible shared server. Desktop mode

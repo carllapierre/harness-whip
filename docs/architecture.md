@@ -77,11 +77,19 @@ that case from an old failure; missing timestamps keep the conservative baseline
 
 ## Codex boundary
 
-The official app-server discovers threads and reads quota. Routine observation
+The official app-server discovers threads and reads quota. Routine discovery
+uses database-only listings. At startup and every five minutes, a full rollout
+scan reconciles chats missing from the index. Rollout-only chats are retained
+between scans; when they become indexed they follow ordinary database removal.
+Both paths page completely. A failed reconciliation is retried, and older
+runtimes rejecting the database-only option fall back to full discovery.
+
+Routine observation
 reads only the newest turn metadata with `itemsView: notLoaded`, omitting message
-and tool items and caching unchanged metadata
-for at most 30 seconds. Updated timestamps invalidate that cache; expiry also
-catches changes sharing the same timestamp. Observations contain no permissions
+and tool items. Active, failed and unknown turns refresh at most 30 seconds apart;
+unchanged completed/interrupted turns refresh every five minutes. Updated
+timestamps invalidate either cache immediately; expiry also catches changes
+sharing the same timestamp. Observations contain no permissions
 fingerprint and cannot authorize a send.
 
 Desktop mode requests a live version-11 IPC snapshot when enrolling a quota
@@ -91,6 +99,8 @@ unavailable initial snapshots back off for 30 seconds. Execution-setting changes
 are checked against the original fingerprint during the final live inspection;
 new turns and interruptions cancel from the summary observation.
 
+Before dispatch, discovery is always an uncached full scan, so a retained
+rollout-only chat cannot authorize sending after archival or removal.
 The official queue CLI sends the continuation. Its new-turn correlation marker
 is checked through uncached official turn summaries. Internal desktop IPC remains
 experimental and isolated to one adapter.

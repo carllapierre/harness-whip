@@ -8,7 +8,7 @@ import type {
     TurnObservation,
 } from "../../domain/recovery/recovery-model.ts";
 import { unchanged } from "../../domain/recovery/recovery-policy.ts";
-import { AppServerRpc } from "./app-server-rpc.ts";
+import { AppServerRpc, RpcError } from "./app-server-rpc.ts";
 import { DesktopSnapshots } from "./desktop-snapshots.ts";
 import {
     conversation,
@@ -20,6 +20,8 @@ import {
 import { object, text, uuid } from "./protocol-values.ts";
 
 const run = promisify(execFile);
+const ACTIVE_REFRESH_MS = 30_000;
+const RECONCILE_MS = 5 * 60_000;
 export type ConnectionMode = "desktop" | "proxy" | "stdio";
 
 export class NativeCodexConnection implements CodexConnection {
@@ -27,6 +29,9 @@ export class NativeCodexConnection implements CodexConnection {
     private desktop: DesktopSnapshots;
     private queueChecked = false;
     private observations = new Map<string, { value: TurnObservation; readAt: number }>();
+    private legacyThreads = new Map<string, Conversation>();
+    private reconciledAt: number | null = null;
+    private databaseListingAvailable = true;
 
     constructor(
         private binary: string,
@@ -45,6 +50,53 @@ export class NativeCodexConnection implements CodexConnection {
     }
 
     async listConversations(): Promise<Conversation[]> {
+        let indexed: Conversation[] | null = null;
+        if (this.databaseListingAvailable) {
+            try {
+                indexed = await this.readConversations(true);
+            } catch (error) {
+                if (!(error instanceof RpcError) || error.code !== -32602) {
+                    throw error;
+                }
+                // Older runtimes can reject the optional database-only flag.
+                this.databaseListingAvailable = false;
+            }
+        }
+        let result: Conversation[];
+        const now = this.now();
+        if (indexed === null) {
+            result = await this.readConversations(false);
+        } else if (
+            this.reconciledAt === null ||
+            now < this.reconciledAt ||
+            now - this.reconciledAt >= RECONCILE_MS
+        ) {
+            result = await this.readConversations(false);
+            const indexedIds = new Set(indexed.map((thread) => thread.id));
+            this.legacyThreads = new Map(
+                result
+                    .filter((thread) => !indexedIds.has(thread.id))
+                    .map((thread) => [thread.id, thread]),
+            );
+            this.reconciledAt = this.now();
+        } else {
+            // Preserve rollout-only threads until the next authoritative scan.
+            // Once indexed, they follow database removal/archival immediately.
+            for (const thread of indexed) {
+                this.legacyThreads.delete(thread.id);
+            }
+            result = [...indexed, ...this.legacyThreads.values()];
+        }
+        const current = new Set(result.map((thread) => thread.id));
+        for (const id of this.observations.keys()) {
+            if (!current.has(id)) {
+                this.observations.delete(id);
+            }
+        }
+        return result;
+    }
+
+    private async readConversations(databaseOnly: boolean): Promise<Conversation[]> {
         const result: Conversation[] = [];
         let cursor: string | undefined;
         const visited = new Set<string>();
@@ -57,6 +109,7 @@ export class NativeCodexConnection implements CodexConnection {
                     sourceKinds: ["cli", "vscode", "exec", "appServer"],
                     sortKey: "updated_at",
                     sortDirection: "desc",
+                    ...(databaseOnly ? { useStateDbOnly: true } : {}),
                 }),
             );
             if (!Array.isArray(response.data)) {
@@ -76,12 +129,6 @@ export class NativeCodexConnection implements CodexConnection {
                 visited.add(cursor);
             }
         } while (cursor);
-        const current = new Set(result.map((thread) => thread.id));
-        for (const id of this.observations.keys()) {
-            if (!current.has(id)) {
-                this.observations.delete(id);
-            }
-        }
         return result;
     }
 
@@ -106,11 +153,18 @@ export class NativeCodexConnection implements CodexConnection {
     async observe(thread: Conversation): Promise<TurnObservation> {
         uuid(thread.id);
         const cached = this.observations.get(thread.id);
+        const age = cached ? this.now() - cached.readAt : Infinity;
+        const refreshMs =
+            cached &&
+            (cached.value.turnStatus === "completed" || cached.value.turnStatus === "interrupted")
+                ? RECONCILE_MS
+                : ACTIVE_REFRESH_MS;
         if (
             cached &&
             cached.value.updatedAt === thread.updatedAt &&
             cached.value.project === thread.project &&
-            this.now() - cached.readAt < 30_000
+            age >= 0 &&
+            age < refreshMs
         ) {
             return { ...cached.value, ...thread };
         }
@@ -160,7 +214,8 @@ export class NativeCodexConnection implements CodexConnection {
 
     async continue(threadId: string, message: string, expected: ThreadSnapshot): Promise<string> {
         uuid(threadId);
-        if (!(await this.listConversations()).some((entry) => entry.id === threadId)) {
+        // A cached rollout-only thread may have been archived between reconciliations.
+        if (!(await this.readConversations(false)).some((entry) => entry.id === threadId)) {
             throw new Error("Conversation was archived or removed before dispatch");
         }
         const fresh = await this.inspect(threadId);

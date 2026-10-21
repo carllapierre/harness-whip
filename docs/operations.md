@@ -89,8 +89,14 @@ issue reasons and timestamps. Successful inspection clears a resolved issue.
 Waiting recoveries reread quota every 30 seconds, so a manual reset can release
 them before the original reset timestamp. Whip does not redeem account resets.
 
-Routine monitoring reads turn metadata without message/tool items and caches unchanged results for
-at most 30 seconds. Full desktop history is requested when validating a quota
+Routine discovery uses database-only listings, with a full reconciliation at
+startup and every five minutes to retain chats absent from the index. Completed
+or interrupted chats reuse unchanged turn metadata for up to five minutes;
+updated timestamps invalidate it immediately. Active or failed turns refresh
+every 30 seconds. A newly active chat with stale index metadata may take until
+the reconciliation to be detected. Sending always requires fresh full discovery.
+
+Routine monitoring reads turn metadata without message/tool items. Full desktop history is requested when validating a quota
 failure and before a recovery send, rather than on every watch cycle. A blocked
 initial inspection is retried after 30 seconds. Setting/permission changes are
 rechecked before dispatch; manual continuations and interruptions cancel from
